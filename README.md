@@ -5,7 +5,7 @@
 ![transport](https://img.shields.io/badge/BLE-custom%200x0FF0%20GATT-informational)
 ![vendor app](https://img.shields.io/badge/vendor%20app-not%20required-success)
 ![HACS](https://img.shields.io/badge/HACS-custom%20repo-41BDF5)
-![license](https://img.shields.io/badge/license-MIT-blue)
+![license](https://img.shields.io/badge/license-AGPL--3.0-blue)
 
 **Drive the Starmax GTX2 smartwatch with no vendor app and no cloud account.** This is a
 reverse-engineering of the GTX2's Bluetooth-LE protocol (vendor app "Runmefit"; sold
@@ -329,7 +329,8 @@ PII-free** frame vectors. Current counts: **489** client tests + **159** integra
     built from our own BLE captures + observed behaviour, **cross-referenced against the public
     [RunmefitSDKDemo](https://github.com/developersth/RunmefitSDKDemo) and analysis of the vendor
     app's own protocol**. Some payload layouts are named from that protocol schema. RE for
-    interoperability, MIT-licensed.
+    interoperability. Some health decoders are ports of our own Gadgetbridge coordinator
+    (AGPLv3), so this repo is **AGPLv3** to match.
   - The separate **Gadgetbridge coordinator** lane (not in this repo) is the one held to a **strict
     clean-room bar** — captures + observed behaviour only, never the APK/SDK — because upstream
     Gadgetbridge requires it.
@@ -347,4 +348,8 @@ PII-free** frame vectors. Current counts: **489** client tests + **159** integra
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Copyright © JP Hein (jphein).
+**AGPL-3.0** — see [LICENSE](LICENSE). Copyright © 2026 JP Hein (jphein).
+
+Licensed AGPLv3 (not a more permissive license) because some health decoders are ports of the
+GTX2 Gadgetbridge coordinator, which is AGPLv3 — matching the source license avoids a copyleft
+downgrade.
