@@ -4,7 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%231a1f27' stroke='%237aa2f7' stroke-width='2'/%3E%3Cpath d='M16 8 A8 8 0 0 1 24 16' fill='none' stroke='%237aa2f7' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
-<title>Starmax GTX2 — Control & Status</title>
+<title>Starmax GTX2 — your watch as a house watt meter</title>
+<meta name="description" content="Feed live home/grid power (kW) onto a custom Starmax GTX2 watch face over Bluetooth via Home Assistant. Open BLE, no vendor app — plus health, weather, and custom faces.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Starmax GTX2">
+<meta property="og:title" content="Your watch as a live house watt meter">
+<meta property="og:description" content="The Starmax GTX2, reverse-engineered: feed live home/grid power (kW) onto a custom watch face over Bluetooth via Home Assistant — plus health, weather, and faces, with no vendor app.">
+<meta property="og:url" content="https://jphein.github.io/starmax-gtx2/">
+<meta property="og:image" content="https://jphein.github.io/starmax-gtx2/img/og-card.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="A Starmax GTX2 watch showing a live grid-power face: clock, 12 kW, and load arcs.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Your watch as a live house watt meter">
+<meta name="twitter:description" content="Feed live home/grid power (kW) onto a custom Starmax GTX2 watch face over Bluetooth via Home Assistant. Open BLE, no vendor app.">
+<meta name="twitter:image" content="https://jphein.github.io/starmax-gtx2/img/og-card.png">
 <style>
   :root{
     --bg:#0e1217;--surface:#161c24;--surface-2:#1b232d;--border:#29323f;
@@ -147,10 +161,12 @@
 <div class="wrap">
 
   <div class="center">
-    <p class="eyebrow">Starmax GTX2 · control &amp; status · 2026-07-12</p>
-    <h1>Your watch, driven without the vendor app</h1>
-    <p class="lede">A reverse-engineered decode of the GTX2's Bluetooth protocol. Tap a control to see what the
-    <code>starmax</code> CLI does to the watch — faces, health, weather, alerts.</p>
+    <p class="eyebrow">Starmax GTX2 · open BLE · no vendor app</p>
+    <h1>Use your watch as a house watt meter</h1>
+    <p class="lede">Feed live home / grid power onto a custom watch face over Bluetooth — via
+    <strong>Home Assistant</strong> — so your wrist shows real-time <strong>kW</strong>. The same
+    reverse-engineered decode also drives faces, health, weather and alerts straight from the
+    <code>starmax</code> CLI, with no vendor app. Tap a control to try it.</p>
     <div class="navbtns">
       <a class="btn primary" href="https://github.com/jphein/starmax-gtx2">View on GitHub</a>
       <a class="btn" href="teardown.html">Teardown guide →</a>
@@ -172,6 +188,7 @@
       <p class="kh">Control surface&nbsp;</p>
       <div class="readouts">
         <span class="ro"><i></i><span>link</span><b>−57 dBm</b></span>
+        <span class="ro"><span>grid</span><b id="roKw">12</b>&nbsp;kW</span>
         <span class="ro"><span>steps</span><b id="roSteps">162</b></span>
         <span class="ro"><span>hr</span><b id="roHr">80</b></span>
         <span class="ro"><span>batt</span><b>78%</b></span>
@@ -363,9 +380,9 @@
   canvas.width=S*DPR; canvas.height=S*DPR; ctx.scale(DPR,DPR);
   var C=S/2;
   var ACC="#7aa2f7", OK="#43d17a", WARN="#f5a623", ROSE="#f77c9a";
-  var faces=["activity","aurora","analog","weather"];
-  var faceNames={activity:"faces/rings.zip",aurora:"faces/aurora.zip",analog:"faces/classic.zip",weather:"faces/weather.zip"};
-  var st={face:"activity",steps:162,hr:80,cal:27,dist:0.04,temp:18,cond:"Partly cloudy",hi:24,lo:11,flash:0};
+  var faces=["grid","activity","aurora","analog","weather"];
+  var faceNames={grid:"faces/grid-kw.bin",activity:"faces/rings.zip",aurora:"faces/aurora.zip",analog:"faces/classic.zip",weather:"faces/weather.zip"};
+  var st={face:"grid",steps:162,hr:80,cal:27,dist:0.04,temp:18,cond:"Partly cloudy",hi:24,lo:11,kw:12,batt:78,flash:0};
 
   function ringArc(cx,cy,r,pct,color,width){
     ctx.beginPath();ctx.strokeStyle="#ffffff14";ctx.lineWidth=width;ctx.lineCap="round";
@@ -426,7 +443,17 @@
     txt(st.cond,C,C+92,20,"#c9d3e3",500);
     txt("H "+st.hi+"°   L "+st.lo+"°",C,C+124,17,"#8b98a9",500);
   }
-  var drawers={activity:drawActivity,aurora:drawAurora,analog:drawAnalog,weather:drawWeather};
+  function drawGrid(){
+    var d=new Date();
+    txt("GRID",C,C-150,26,"#96a0af",700);
+    txt(two(d.getHours())+":"+two(d.getMinutes()),C,C-60,84,"#fff",700);        // real clock
+    txt(st.kw+"",C-30,C+62,90,"#FF3B30",800);                                    // live kW hero (red)
+    txt("kW",C+64,C+72,32,"#8b98a9",700);                                        // unit
+    txt("♥ "+st.hr,C,C+150,22,"#c9d3e3",600);                               // heart + BPM
+    ringArc(C,C,C-16,st.batt/100,"#3FA35C",9);                                   // battery ring (green, outer)
+    ringArc(C,C,C-34,Math.min(st.kw/12,1),"#FF3B30",9);                          // grid-load ring (red, inner)
+  }
+  var drawers={grid:drawGrid,activity:drawActivity,aurora:drawAurora,analog:drawAnalog,weather:drawWeather};
 
   function render(){
     ctx.clearRect(0,0,S,S);
@@ -437,7 +464,9 @@
   function loop(){render();requestAnimationFrame(loop);}
   render(); if(!reduce) loop();
   if(!reduce){ setInterval(function(){ if(Math.random()<.5){st.steps+=Math.floor(Math.random()*4);} st.hr=78+Math.floor(Math.random()*6);
+    st.kw=Math.max(1,Math.min(12, st.kw + (Math.random()<.5?-1:1)*Math.floor(Math.random()*3)));  // live house load 1-12 kW
     document.getElementById("roSteps").textContent=st.steps.toLocaleString();
+    document.getElementById("roKw").textContent=st.kw;
     document.getElementById("roHr").textContent=st.hr; },2200); }
 
   var echo=document.getElementById("echo");
