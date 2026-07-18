@@ -1,0 +1,41 @@
+# =============================================================================
+# pyocd.yaml — generic Cortex-M33 attach for Actions ATS3085S4 (no CMSIS pack)
+# =============================================================================
+# pyOCD 0.44.1. The builtin `cortex_m` target ("Generic / CoreSightTarget") is
+# pack-less — perfect for R1 (probe / IDCODE / halt), which is pyOCD's strength.
+#
+# Works with BOTH probe families out of the box:
+#   - CMSIS-DAP / DAPLink  (native)
+#   - ST-Link              (native pyOCD ST-Link backend; no dapdirect dance)
+#   - J-Link               (native)
+#
+# USAGE (pyocd auto-loads ./pyocd.yaml, or pass --config pyocd.yaml):
+#
+#   pyocd list                                   # see the attached probe
+#   pyocd list --targets | grep cortex_m         # confirms the generic target
+#
+#   # R1 — connect UNDER RESET, prove SWD + read core identity, then exit:
+#   pyocd cmd -t cortex_m -M under-reset -f 1000000 \
+#       -c "status" \
+#       -c "read32 0xE000ED00" \
+#       -c "reg pc" -c "reg xpsr"
+#   # PASS: pyocd logs "DP IDR = 0x..." on connect; CPUID @0xE000ED00 part=0xD21.
+#   # Add `-Ldebug` to force the DPIDR/APID lines into the log if not shown.
+#   # FAIL (SWD fused/absent): "No ACK received" / "Not found" -> CH341A route.
+#
+# NOTE on R2 (NOR dump): the memory-mapped NOR XIP window is at 0x12000000
+# (16 MiB). pyOCD's `savemem` routes through the target memory map; the generic
+# cortex_m has no region there and may refuse/warn. Use OpenOCD's dump_image for
+# the XIP dump (it reads any AP address regardless of map). If pyocd DOES allow
+# it on your build:
+#   pyocd cmd -t cortex_m -M attach -c "savemem 0x12000000 0x1000000 golden_pyocd_1.bin"
+#   (attach, NOT under-reset: the XIP cache is set up by mbrec at boot.)
+# =============================================================================
+
+target_override: cortex_m
+frequency: 1000000          # 1 MHz start; raise once the link is stable
+connect_mode: under-reset   # R1 probe. For the NOR dump switch to 'attach'.
+reset_type: hw              # use the probe's nRESET line (sw = SYSRESETREQ)
+
+# Keep pyocd from trying to auto-erase/flash anything — we only read here:
+# (no flash algo exists for this SoC anyway)
