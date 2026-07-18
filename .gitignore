@@ -1,0 +1,37 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+venv/
+.venv/
+env/
+
+# --- Watch-face build intermediates ---
+# The shipped dial .bin faces (watchfaces/**/*.bin) ARE tracked — they are the canonical
+# artifacts. dial_create.py stages assets in a temp dir (dialgen_*) that is never committed.
+dialgen_*/
+watchfaces/**/build/
+watchfaces/**/build_*/
+
+# --- Home Assistant / secrets ---
+.storage/
+secrets.yaml
+*.secret
+.env
+.env.*
+
+# --- ESPHome ---
+.esphome/
+
+# --- Editor / OS cruft ---
+*.swp
+*~
+.DS_Store
+.idea/
+.vscode/

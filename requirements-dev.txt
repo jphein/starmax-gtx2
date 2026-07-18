@@ -1,0 +1,9 @@
+# Dev / test dependencies. Runtime deps are declared by each component:
+#   custom_components/gtx2/manifest.json  ·  client/pyproject.toml  ·  bridge (see requirements below).
+pytest>=7          # test runner (tests/ + client/tests/)
+PyYAML>=6          # HA package + dashboard structural tests
+Pillow>=10         # grid-gauge / watch-face builders (custom_components/gtx2/render.py, bridge/gtx2_bridge/faces.py)
+lz4>=4             # byte-parity reference for the on-watch LZ4 block codec (render-seam test)
+cramjam>=2.9       # musl/HAOS LZ4 fallback (custom_components/gtx2 runtime dep; render-seam test)
+bleak>=0.22        # only needed to actually talk to a watch (client/); the test suites are offline
+paho-mqtt>=2.0     # only needed to run the MQTT bridge (bridge/ serve); tests import pure helpers only
