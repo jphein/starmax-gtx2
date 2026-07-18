@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%231a1f27' stroke='%237aa2f7' stroke-width='2'/%3E%3Cpath d='M16 8 A8 8 0 0 1 24 16' fill='none' stroke='%237aa2f7' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<title>Starmax GTX2 — Control & Status</title>
+<style>
+  :root{
+    --bg:#0e1217;--surface:#161c24;--surface-2:#1b232d;--border:#29323f;
+    --text:#e8edf4;--muted:#8b98a9;--faint:#5f6b7b;
+    --accent:#7aa2f7;--ok:#43d17a;--warn:#f5a623;--closed:#7e8ba3;
+    --ok-soft:#43d17a1f;--warn-soft:#f5a6231f;--closed-soft:#7e8ba31f;--accent-bg:#7aa2f71a;
+    --font-sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --radius:14px;--maxw:1040px;
+  }
+  @media (prefers-color-scheme:light){
+    :root{
+      --bg:#eef1f6;--surface:#ffffff;--surface-2:#f4f7fb;--border:#dbe2ec;
+      --text:#131922;--muted:#5a6572;--faint:#8a95a4;
+      --accent:#3b6fd4;--ok:#159a52;--warn:#c07d0a;--closed:#5d6b80;
+      --ok-soft:#159a5216;--warn-soft:#c07d0a16;--closed-soft:#5d6b8016;--accent-bg:#3b6fd414;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);line-height:1.55;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:clamp(20px,4vw,48px) clamp(16px,4vw,32px) 72px}
+  a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+  .eyebrow{font-family:var(--font-mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin:0 0 10px}
+  h1{font-size:clamp(26px,4.6vw,40px);line-height:1.05;margin:0 0 10px;letter-spacing:-.02em;text-wrap:balance;font-weight:680}
+  h2{font-size:clamp(18px,2.4vw,22px);margin:56px 0 4px;letter-spacing:-.01em;font-weight:640}
+  .sub{color:var(--muted);max-width:60ch;margin:0}
+  .lede{color:var(--muted);font-size:clamp(15px,1.7vw,17px);max-width:60ch;margin:0 auto}
+  .center{text-align:center}
+  .navbtns{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:24px}
+  .btn{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:13px;
+    padding:10px 16px;border-radius:10px;border:1px solid var(--border);color:var(--text);
+    background:var(--surface);transition:border-color .15s,background .15s}
+  .btn:hover{border-color:var(--accent);background:var(--surface-2);text-decoration:none}
+  .btn.primary{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+
+  /* ---------- interactive stage ---------- */
+  .stage{display:flex;gap:clamp(28px,5vw,60px);flex-wrap:wrap;align-items:center;justify-content:center;margin-top:26px}
+  .device{width:min(310px,78vw);aspect-ratio:1;border-radius:50%;position:relative;flex:0 0 auto;
+    background:radial-gradient(circle at 32% 26%,#3b4552 0%,#1a1f27 68%,#0a0d12 100%);
+    box-shadow:0 34px 70px -22px #000c, inset 0 2px 3px #ffffff26, inset 0 -10px 24px #0009;
+    display:grid;place-items:center;padding:5.5%}
+  .device.buzz{animation:buzz .5s linear}
+  @keyframes buzz{10%,90%{transform:translate(-1px,0)}20%,80%{transform:translate(2px,-1px)}
+    30%,50%,70%{transform:translate(-4px,1px)}40%,60%{transform:translate(4px,-1px)}}
+  .screen{width:100%;height:100%;border-radius:50%;background:#000;position:relative;overflow:hidden;
+    box-shadow:inset 0 0 0 3px #05070a, inset 0 0 34px #000}
+  .screen canvas{display:block;width:100%;height:100%}
+  .glass{position:absolute;inset:0;border-radius:50%;pointer-events:none;
+    background:linear-gradient(138deg,#ffffff20 0%,#ffffff08 30%,transparent 46%)}
+  .crown{position:absolute;right:-5px;top:40%;width:9px;height:38px;border-radius:3px;
+    background:linear-gradient(#4d5865,#262d37);box-shadow:0 2px 5px #0009}
+  .notif{position:absolute;left:8%;right:8%;top:50%;transform:translateY(-50%) scale(.9);
+    background:#0f1622ee;border:1px solid #7aa2f7;border-radius:14px;padding:12px 14px;opacity:0;
+    transition:opacity .25s, transform .25s;pointer-events:none;text-align:center}
+  .notif.show{opacity:1;transform:translateY(-50%) scale(1)}
+  .notif .nt{font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;color:#7aa2f7;text-transform:uppercase}
+  .notif .nb{color:#fff;font-size:14px;margin-top:3px}
+
+  .console{flex:1 1 330px;min-width:290px;max-width:460px}
+  .console .kh{font-family:var(--font-mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:0 0 12px;display:flex;align-items:center;gap:8px}
+  .console .kh::after{content:"preview — maps to real starmax commands";color:var(--faint);letter-spacing:.02em;text-transform:none;font-size:11px}
+  .readouts{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px}
+  .ro{font-family:var(--font-mono);font-size:12px;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:5px 11px;display:inline-flex;gap:7px;align-items:center}
+  .ro b{font-variant-numeric:tabular-nums;color:var(--text)} .ro span{color:var(--muted)}
+  .ro i{width:8px;height:8px;border-radius:50%;background:var(--ok);font-style:normal}
+  .ctl-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .ctl{display:flex;flex-direction:column;gap:3px;align-items:flex-start;text-align:left;font-family:inherit;
+    background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:11px 13px;cursor:pointer;color:var(--text);
+    transition:border-color .15s,background .15s,transform .08s}
+  .ctl:hover{border-color:var(--accent);background:var(--surface-2)}
+  .ctl:active{transform:translateY(1px)}
+  .ctl:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .ctl .t{font-size:14px;font-weight:600;display:flex;gap:8px;align-items:center}
+  .ctl .cmd{font-family:var(--font-mono);font-size:10.5px;color:var(--faint)}
+  .echo{font-family:var(--font-mono);font-size:12.5px;background:#0a0d12;border:1px solid var(--border);border-radius:10px;padding:11px 13px;color:var(--ok);margin-top:12px;overflow-x:auto;white-space:nowrap}
+  .echo .p{color:#7aa2f7}
+  @media (prefers-color-scheme:light){ .echo{color:#7ee2a8} }
+
+  /* ---------- status ring ---------- */
+  .ringrow{display:flex;gap:clamp(22px,4vw,44px);align-items:center;flex-wrap:wrap;margin-top:18px}
+  .ring{position:relative;width:176px;height:176px;flex:0 0 auto}
+  .ring svg{transform:rotate(-90deg)}
+  .ring .track{fill:none;stroke:var(--border);stroke-width:13}
+  .ring .prog{fill:none;stroke:var(--accent);stroke-width:13;stroke-linecap:round;stroke-dasharray:464.4;stroke-dashoffset:464.4}
+  @media (prefers-reduced-motion:no-preference){.ring .prog{animation:fill 1.5s cubic-bezier(.22,1,.36,1) .2s forwards}
+    @keyframes fill{to{stroke-dashoffset:46.4}}}
+  @media (prefers-reduced-motion:reduce){.ring .prog{stroke-dashoffset:46.4}}
+  .ring-c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .ring-c .n{font-family:var(--font-mono);font-size:40px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .ring-c .l{font-family:var(--font-mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  .legend{display:flex;flex-direction:column;gap:9px;flex:1 1 240px;min-width:220px}
+  .lg{display:flex;align-items:center;gap:10px;font-size:14px}
+  .lg .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+  .lg b{font-family:var(--font-mono);font-variant-numeric:tabular-nums;margin-left:auto;color:var(--muted)}
+  .d-ok{background:var(--ok)}.d-warn{background:var(--warn)}.d-closed{background:var(--closed)}.d-held{background:var(--accent)}
+
+  /* ---------- lanes / cards ---------- */
+  .lanes,.cols{display:grid;gap:16px;margin-top:18px}
+  .lanes{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+  .cols{grid-template-columns:repeat(auto-fit,minmax(275px,1fr))}
+  .lane{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 22px;position:relative;overflow:hidden}
+  .lane::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--lanec,var(--accent))}
+  .lane h3{margin:0 0 2px;font-size:16px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .lane .tag{font-family:var(--font-mono);font-size:11px;color:var(--faint)}
+  .lane p{margin:10px 0 0;color:var(--muted);font-size:14px}
+  .lane .metric{font-family:var(--font-mono);font-size:12.5px;color:var(--muted);margin-top:14px;display:flex;gap:16px;flex-wrap:wrap}
+  .lane .metric b{color:var(--text);font-weight:600}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px}
+  .card h4{margin:0 0 12px;font-size:12px;font-family:var(--font-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .row{display:flex;align-items:baseline;gap:12px;padding:8px 0;border-top:1px solid var(--border)}
+  .row:first-of-type{border-top:none}
+  .row .name{flex:1;font-size:14px}
+  .row .name small{display:block;color:var(--faint);font-size:12px;line-height:1.4;margin-top:2px}
+  .chip{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;padding:3px 9px;border-radius:999px;white-space:nowrap;font-weight:600;flex:0 0 auto}
+  .c-ok{color:var(--ok);background:var(--ok-soft)}.c-warn{color:var(--warn);background:var(--warn-soft)}
+  .c-closed{color:var(--closed);background:var(--closed-soft)}.c-held{color:var(--accent);background:var(--accent-bg)}
+  .findings{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:6px 20px;margin-top:18px}
+  .finding{display:flex;gap:16px;align-items:flex-start;padding:15px 0;border-top:1px solid var(--border)}
+  .finding:first-child{border-top:none}
+  .finding .verdict{font-family:var(--font-mono);font-size:11px;color:var(--closed);letter-spacing:.06em;text-transform:uppercase;flex:0 0 78px;padding-top:2px}
+  .finding .body b{font-weight:600}
+  .finding .body p{margin:3px 0 0;color:var(--muted);font-size:13.5px}
+  .scroll{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);margin-top:18px;background:var(--surface)}
+  table{border-collapse:collapse;width:100%;font-family:var(--font-mono);font-size:13px;min-width:520px}
+  th,td{text-align:left;padding:10px 16px;border-bottom:1px solid var(--border);white-space:nowrap}
+  th{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  td.op{color:var(--accent)} td .muted{color:var(--faint)} tr:last-child td{border-bottom:none}
+  .enum{font-family:var(--font-mono);font-size:12.5px;color:var(--muted);margin-top:12px;line-height:1.9}
+  .enum b{color:var(--text)}
+  .specs{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-top:18px}
+  .spec{background:var(--surface);padding:16px 18px}
+  .spec .k{font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .spec .v{font-size:14px;margin-top:4px}
+  footer{margin-top:56px;padding-top:22px;border-top:1px solid var(--border);font-family:var(--font-mono);font-size:12px;color:var(--faint);display:flex;flex-wrap:wrap;gap:8px 22px;align-items:center}
+  footer .stat b{color:var(--muted);font-weight:600}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <div class="center">
+    <p class="eyebrow">Starmax GTX2 · control &amp; status · 2026-07-12</p>
+    <h1>Your watch, driven without the vendor app</h1>
+    <p class="lede">A reverse-engineered decode of the GTX2's Bluetooth protocol. Tap a control to see what the
+    <code>starmax</code> CLI does to the watch — faces, health, weather, alerts.</p>
+    <div class="navbtns">
+      <a class="btn primary" href="https://github.com/jphein/starmax-gtx2">View on GitHub</a>
+      <a class="btn" href="teardown.html">Teardown guide →</a>
+      <a class="btn" href="gtx2-face-builder.html">Face builder →</a>
+    </div>
+  </div>
+
+  <section class="stage">
+    <div class="device" id="device">
+      <div class="screen">
+        <canvas id="face" width="520" height="520"></canvas>
+        <div class="glass"></div>
+        <div class="notif" id="notif"><div class="nt" id="notifT">Messages</div><div class="nb" id="notifB"></div></div>
+      </div>
+      <div class="crown"></div>
+    </div>
+
+    <div class="console">
+      <p class="kh">Control surface&nbsp;</p>
+      <div class="readouts">
+        <span class="ro"><i></i><span>link</span><b>−57 dBm</b></span>
+        <span class="ro"><span>steps</span><b id="roSteps">162</b></span>
+        <span class="ro"><span>hr</span><b id="roHr">80</b></span>
+        <span class="ro"><span>batt</span><b>78%</b></span>
+      </div>
+      <div class="ctl-grid">
+        <button class="ctl" data-act="face"><span class="t">⌚ Cycle face</span><span class="cmd">starmax push-dial …</span></button>
+        <button class="ctl" data-act="sync"><span class="t">❤ Sync health</span><span class="cmd">starmax sync-health</span></button>
+        <button class="ctl" data-act="weather"><span class="t">☀ Push weather</span><span class="cmd">starmax weather</span></button>
+        <button class="ctl" data-act="notify"><span class="t">🔔 Notify</span><span class="cmd">starmax notify …</span></button>
+        <button class="ctl" data-act="find"><span class="t">📳 Find watch</span><span class="cmd">starmax find</span></button>
+        <button class="ctl" data-act="time"><span class="t">🕓 Set time</span><span class="cmd">starmax set-time</span></button>
+      </div>
+      <div class="echo" id="echo"><span class="p">$</span> starmax scan &nbsp;<span style="color:var(--faint)">→ GTX2 F4:4E:FD:…  rssi −57</span></div>
+    </div>
+  </section>
+
+  <h2 class="center" style="margin-top:60px">How complete is it?</h2>
+  <p class="sub center" style="margin:0 auto">Feature-complete on everything the watch exposes over BLE. The remainder is documented hardware limits.</p>
+  <div class="ringrow" style="justify-content:center">
+    <div class="ring">
+      <svg width="176" height="176" viewBox="0 0 176 176" aria-hidden="true">
+        <circle class="track" cx="88" cy="88" r="74"></circle>
+        <circle class="prog" cx="88" cy="88" r="74"></circle>
+      </svg>
+      <div class="ring-c"><span class="n">90%</span><span class="l">delivered</span></div>
+    </div>
+    <div class="legend">
+      <div class="lg"><span class="dot d-ok"></span> Shipped <b>20</b></div>
+      <div class="lg"><span class="dot d-warn"></span> Partial / limited <b>1</b></div>
+      <div class="lg"><span class="dot d-closed"></span> Investigated &amp; closed <b>6</b></div>
+      <div class="lg"><span class="dot d-held"></span> Gadgetbridge lane (open) <b>3</b></div>
+    </div>
+  </div>
+
+  <h2>Two deliverables</h2>
+  <p class="sub">Findings flow into both lanes. The client is interop reverse-engineering — captures + public-SDK cross-reference (not clean-room); the Gadgetbridge lane is strict clean-room (captures/behaviour only).</p>
+  <div class="lanes">
+    <div class="lane" style="--lanec:var(--ok)">
+      <h3>Standalone Python client <span class="chip c-ok">Shipped</span></h3>
+      <span class="tag">starmax-client/ · pipx: starmax</span>
+      <p>Pairs, syncs health, pushes weather &amp; custom faces, reads workouts — no Runmefit app in the loop.</p>
+      <div class="metric"><span><b>481</b> tests</span><span><b>0</b> open PRs</span><span><b>~35</b> commands</span></div>
+    </div>
+    <div class="lane" style="--lanec:var(--accent)">
+      <h3>Gadgetbridge coordinator <span class="chip c-ok">Verified on phone</span></h3>
+      <span class="tag">clean-room · separate repo</span>
+      <p>Full device coordinator for the Gadgetbridge (F-Droid) app, built strictly clean-room. Verified on a phone; lives in a separate Gadgetbridge fork, not in this repo.</p>
+      <div class="metric"><span><b>41</b> tests</span><span>verified on-device</span><span>separate repo</span></div>
+    </div>
+  </div>
+
+  <h2>Standalone client · capabilities</h2>
+  <div class="cols">
+    <div class="card">
+      <h4>Connect &amp; control</h4>
+      <div class="row"><span class="name">BLE transport <small>custom GATT 0x0FF0, fragment reassembly, dedup</small></span><span class="chip c-ok">Shipped</span></div>
+      <div class="row"><span class="name">Pair &amp; activate <small>full setup handshake</small></span><span class="chip c-ok">Shipped</span></div>
+      <div class="row"><span class="name">Set time <small>timezone-aware</small></span><span class="chip c-ok">Shipped</span></div>
+      <div class="row"><span class="name">Find my watch <small>buzz / stop</small></span><span class="chip c-ok">Shipped</span></div>
+    </div>
+    <div class="card">
+      <h4>Health &amp; fitness</h4>
+      <div class="row"><span class="name">Daily steps · distance · calories <small>live-confirmed vs the watch face</small></span><span class="chip c-ok">Shipped</span></div>
+      <div class="row"><span class="name">Heart rate &amp; SpO₂ <small>polled; ~1.5 s loop = near-live</small></span><span class="chip c-ok">Shipped</span></div>
+      <div class="row"><span class="name">Workout summary <small>duration, HR, distance, cal, cadence, stride</small></span><span class="chip c-ok">Shipped</span></div>
+      <div class="row"><span class="name">Health-history sync <small>HR / SpO₂ / sleep</small></span><span class="chip c-ok">Shipped</span></div>
+    </div>
+    <div class="card">
+      <h4>Personalization</h4>
+      <div class="row"><span class="name">Install custom watch faces <small>native container, LZ4 assets, auto-activate</small></span><span class="chip c-ok">Shipped</span></div>
+      <div class="row"><span class="name">Author faces from images <small>transcode a ZIP into a live face</small></span><span class="chip c-ok">Shipped</span></div>
+      <div class="row"><span class="name">Weather push <small>current + forecast</small></span><span class="chip c-ok">Shipped</span></div>
+    </div>
+    <div class="card">
+      <h4>Notifications</h4>
+      <div class="row"><span class="name">Send &amp; enable <small>frames send; on-watch display needs a classic-Bluetooth companion (tabled)</small></span><span class="chip c-warn">Partial</span></div>
+      <div class="row"><span class="name">Packaging &amp; safety <small>starmax entry-point · command audit · --force guard</small></span><span class="chip c-ok">Shipped</span></div>
+    </div>
+  </div>
+
+  <h2>Gadgetbridge coordinator</h2>
+  <p class="sub">The Gadgetbridge (F-Droid) app drives the GTX2 through this clean-room coordinator — built from captures/behaviour only, never the APK. <b>Built, sideloaded to a real phone, and verified on-device (2026-07-12): every metric the watch produces now displays in Gadgetbridge.</b> It lives in a separate Gadgetbridge fork, not in this repo.</p>
+  <div class="cols">
+    <div class="card">
+      <h4>Coordinator core · shipped</h4>
+      <div class="row"><span class="name">Bind &amp; setup handshake <small>byte-exact tested</small></span><span class="chip c-ok">Shipped</span></div>
+      <div class="row"><span class="name">Media control <small>music play / pause / track mapping</small></span><span class="chip c-ok">Shipped</span></div>
+      <div class="row"><span class="name">Device-state, dial-list &amp; health-switch <small>reply parsing</small></span><span class="chip c-ok">Shipped</span></div>
+      <div class="row"><span class="name">User profile <small>populated from Gadgetbridge settings</small></span><span class="chip c-ok">Shipped</span></div>
+      <div class="row"><span class="name">Auto-fetch + reassembly <small>records-available trigger · 0xC2 continuation · fetch timeout</small></span><span class="chip c-ok">Shipped</span></div>
+    </div>
+    <div class="card">
+      <h4>Health data · live on phone</h4>
+      <div class="row"><span class="name">Steps · distance · calories <small>daily activity, byte-exact vs the watch face</small></span><span class="chip c-ok">On phone</span></div>
+      <div class="row"><span class="name">Blood oxygen (SpO₂) <small>per-day samples in the SpO₂ chart</small></span><span class="chip c-ok">On phone</span></div>
+      <div class="row"><span class="name">Stress <small>daily score</small></span><span class="chip c-ok">On phone</span></div>
+      <div class="row"><span class="name">HRV <small>daily value + summary</small></span><span class="chip c-ok">On phone</span></div>
+      <div class="row"><span class="name">Heart rate <small>daily (sparse) + dense workout curve</small></span><span class="chip c-ok">On phone</span></div>
+      <div class="row"><span class="name">Workouts <small>summary + activity-tracks list</small></span><span class="chip c-ok">On phone</span></div>
+    </div>
+    <div class="card">
+      <h4>Open items</h4>
+      <div class="row"><span class="name">Sleep <small>path ready — needs a night of sleep data</small></span><span class="chip c-warn">Needs data</span></div>
+      <div class="row"><span class="name">Workout VO₂ max <small>in the summary head — offset needs a workout capture</small></span><span class="chip c-warn">Needs capture</span></div>
+      <div class="row"><span class="name">Daily calories offset <small>provisional — steps/HR/SpO₂/stress/HRV confirmed</small></span><span class="chip c-warn">Provisional</span></div>
+    </div>
+  </div>
+  <p class="enum"><b>coordinator files</b> ·
+    StarmaxCoordinator.kt &nbsp; StarmaxFetcher.kt &nbsp; StarmaxHealthRecord.kt &nbsp; StarmaxWorkoutSummary.kt &nbsp; StarmaxStepsSample &nbsp; StarmaxActivitySampleProvider.kt &nbsp;
+    protocol/{StarmaxFrame, StarmaxCrc, StarmaxProtobuf}.kt
+    <span style="color:var(--faint)"> · 50 tests · separate Gadgetbridge fork</span></p>
+
+  <h2>Investigated &amp; closed</h2>
+  <p class="sub">Chased to a definitive answer — a documented hardware limit, or (for custom firmware) a proof on real hardware.</p>
+  <div class="findings">
+    <div class="finding"><span class="verdict">No path</span><div class="body"><b>Raw accelerometer stream</b><p>The LIS2DH12's raw XYZ is chip-internal only; stock firmware never exposes it over BLE. Derived step counts are pollable; raw motion is not.</p></div></div>
+    <div class="finding"><span class="verdict">No path</span><div class="body"><b>Live push / streaming</b><p>No push channel — every live value is a polled request. Poll fast for near-real-time; true streaming doesn't exist.</p></div></div>
+    <div class="finding"><span class="verdict">No path</span><div class="body"><b>GPS route / polyline</b><p>Two GPS-locked walks stored no track; the watch shows no map. GPS drives distance &amp; pace only — the route is never retained.</p></div></div>
+    <div class="finding"><span class="verdict">Not on watch</span><div class="body"><b>Blood pressure</b><p>No BP category exists in the watch's health surface — the dashboard card has no sensor behind it on this device.</p></div></div>
+    <div class="finding"><span class="verdict">Not on watch</span><div class="body"><b>Body energy</b><p>Not among the categories the watch emits ({0,1,2,3,4,5,7}) — another dashboard card with no data source here.</p></div></div>
+    <div class="finding"><span class="verdict" style="color:var(--ok)">Proven</span><div class="body"><b>Custom firmware — flashed &amp; running</b><p>Repacked stock v1.0.3 with a marker string, recomputed its CRCs, and flashed it onto a spare over BLE with our own from-scratch tool. The watch CRC-verified the whole image (D4 ack <code>d40000</code>), committed, rebooted, and boots it — <b>v1.0.3 confirmed on-device</b>. There is no signature check: CRC-16 integrity only. Scope: guaranteed-boot images onto a designated spare; a wired un-brick path for a <i>bad</i> image is still unproven, so the flasher refuses anything but a verified allowlist entry pre-teardown.</p></div></div>
+  </div>
+
+  <h2>Protocol decode</h2>
+  <p class="sub">Command opcodes mapped on the real "creek" wire (GATT 0x0FF0), distinct from the legacy Java SDK layer.</p>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Opcode</th><th>Command</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="op">0x01</td><td>bind</td><td><span class="muted">device descriptor</span></td></tr>
+        <tr><td class="op">0x02</td><td>set-time</td><td><span class="muted">derived tz offset</span></td></tr>
+        <tr><td class="op">0x03</td><td>user-profile</td><td><span class="muted">read + push</span></td></tr>
+        <tr><td class="op">0x04</td><td>feature-bitmap</td><td><span class="muted">enable weather / features</span></td></tr>
+        <tr><td class="op">0x05</td><td>device-state</td><td><span class="muted">battery / status</span></td></tr>
+        <tr><td class="op">0x07</td><td>alarm</td><td></td></tr>
+        <tr><td class="op">0x0a</td><td>hr-monitor config</td><td><span class="muted">interval enable, not a poll</span></td></tr>
+        <tr><td class="op">0x0e</td><td>health / sync</td><td><span class="muted">flag0 switches · flag1 history by syncType</span></td></tr>
+        <tr><td class="op">0x12</td><td>weather</td><td></td></tr>
+        <tr><td class="op">0x15</td><td>sport-gps</td><td><span class="muted">capability query — no coordinates</span></td></tr>
+        <tr><td class="op">0x16</td><td>watch-dial</td><td><span class="muted">bulk face push D3→D1→D2→D4</span></td></tr>
+        <tr><td class="op">0x1d</td><td>camera</td><td><span class="muted">remote shutter (guarded)</span></td></tr>
+        <tr><td class="op">0x22</td><td>mtu</td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="enum"><b>healthSync syncType</b> (0x0e flag 1) ·
+    0 HR &nbsp; 1 stress &nbsp; 2 SpO₂ &nbsp; 3 sleep &nbsp; 4 workout &nbsp; <b>5 activity / steps</b> &nbsp; 7 HRV &nbsp;
+    <span style="color:var(--faint)">— correcting the mislabel that hid the step total.</span></p>
+
+  <h2>Hardware</h2>
+  <p class="enum" style="margin-top:-2px">Silicon, sensors &amp; power confirmed from the public FCC filing
+    (ID <b>2ASAU-GTX2</b>) + the vendor BOM; SoC clocks &amp; memory from Actions&rsquo; published spec —
+    the shipping GTX2, board silk <code>CB05-MTL MB&nbsp;V1.2</code>.</p>
+  <div class="specs">
+    <div class="spec"><div class="k">Application SoC</div><div class="v">Actions ATS3085S4 &ldquo;leopard&rdquo; · Cortex-M33 (&ldquo;MStar&rdquo;) @ 202 MHz</div></div>
+    <div class="spec"><div class="k">Audio DSP</div><div class="v">CEVA TL420 @ 202 MHz</div></div>
+    <div class="spec"><div class="k">AI co-processor</div><div class="v">WTM2101 · RISC-V (2nd firmware)</div></div>
+    <div class="spec"><div class="k">Memory</div><div class="v">1168 KB SRAM + 4/8 MB DDR PSRAM</div></div>
+    <div class="spec"><div class="k">Flash</div><div class="v">XT25F128F-W · 16 MB SPI-NOR</div></div>
+    <div class="spec"><div class="k">Display</div><div class="v">466 × 466 round AMOLED</div></div>
+    <div class="spec"><div class="k">Touch</div><div class="v">Capacitive · I²C (FPC)</div></div>
+    <div class="spec"><div class="k">GNSS receiver</div><div class="v">Unicore UC6228CI · GPS L1</div></div>
+    <div class="spec"><div class="k">Accelerometer</div><div class="v">ST LIS2DH12</div></div>
+    <div class="spec"><div class="k">Heart rate / SpO₂</div><div class="v">HX3918 · PPG</div></div>
+    <div class="spec"><div class="k">Magnetometer</div><div class="v">QMC6308</div></div>
+    <div class="spec"><div class="k">Barometer</div><div class="v">SPL07-003</div></div>
+    <div class="spec"><div class="k">Battery</div><div class="v">390 mAh LiPo · 3.8 V</div></div>
+    <div class="spec"><div class="k">Charge / load</div><div class="v">BP2A579000 + 3304J</div></div>
+    <div class="spec"><div class="k">Transport</div><div class="v">BLE GATT 0x0FF0 · classic BR/EDR</div></div>
+    <div class="spec"><div class="k">Firmware</div><div class="v">Zephyr RTOS + LVGL · &ldquo;Kriki OS&rdquo;</div></div>
+    <div class="spec"><div class="k">Board</div><div class="v">CB05-MTL MB V1.2</div></div>
+    <div class="spec"><div class="k">FCC ID</div><div class="v">2ASAU-GTX2</div></div>
+  </div>
+
+  <footer>
+    <span class="stat"><b>481</b> client tests</span>
+    <span class="stat"><b>50</b> coordinator tests</span>
+    <span class="stat"><b>0</b> open PRs</span>
+    <span class="stat"><b>13</b> opcodes decoded</span>
+    <span class="stat">GB verified on phone · no vendor app</span>
+  </footer>
+</div>
+
+<script>
+(function(){
+  var canvas=document.getElementById("face"), ctx=canvas.getContext("2d");
+  var reduce=matchMedia("(prefers-reduced-motion:reduce)").matches;
+  var DPR=Math.min(devicePixelRatio||1,2), S=520;
+  canvas.width=S*DPR; canvas.height=S*DPR; ctx.scale(DPR,DPR);
+  var C=S/2;
+  var ACC="#7aa2f7", OK="#43d17a", WARN="#f5a623", ROSE="#f77c9a";
+  var faces=["activity","aurora","analog","weather"];
+  var faceNames={activity:"faces/rings.zip",aurora:"faces/aurora.zip",analog:"faces/classic.zip",weather:"faces/weather.zip"};
+  var st={face:"activity",steps:162,hr:80,cal:27,dist:0.04,temp:18,cond:"Partly cloudy",hi:24,lo:11,flash:0};
+
+  function ringArc(cx,cy,r,pct,color,width){
+    ctx.beginPath();ctx.strokeStyle="#ffffff14";ctx.lineWidth=width;ctx.lineCap="round";
+    ctx.arc(cx,cy,r,0,Math.PI*2);ctx.stroke();
+    ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=width;ctx.lineCap="round";
+    ctx.arc(cx,cy,r,-Math.PI/2,-Math.PI/2+Math.PI*2*Math.min(pct,1));ctx.stroke();
+  }
+  function txt(s,x,y,size,color,weight,spacing){
+    ctx.fillStyle=color||"#fff";ctx.textAlign="center";ctx.textBaseline="middle";
+    ctx.font=(weight||600)+" "+size+'px ui-monospace, "SF Mono", Menlo, monospace';
+    if(spacing){ctx.save();var w=0;} ctx.fillText(s,x,y);
+  }
+  function two(n){return (n<10?"0":"")+n;}
+
+  function drawActivity(){
+    ringArc(C,C,180,st.steps/500,ACC,20);
+    ringArc(C,C,150,st.cal/50,WARN,20);
+    ringArc(C,C,120,st.dist/0.08,OK,20);
+    var d=new Date();
+    txt(two(d.getHours())+":"+two(d.getMinutes()),C,C-58,34,"#fff",600);
+    txt(st.steps.toLocaleString(),C,C+6,64,"#fff",700);
+    txt("STEPS",C,C+52,18,"#8b98a9",600);
+    txt("♥ "+st.hr+"   "+st.cal+" kcal",C,C+92,18,"#8b98a9",500);
+  }
+  function drawAurora(){
+    var d=new Date();
+    var g=ctx.createLinearGradient(0,C-90,0,C+40); g.addColorStop(0,"#a7c0ff");g.addColorStop(1,"#6b8cf0");
+    ctx.textAlign="center";ctx.textBaseline="middle";
+    ctx.fillStyle=g;ctx.font='700 120px ui-monospace, Menlo, monospace';
+    ctx.fillText(two(d.getHours())+":"+two(d.getMinutes()),C,C-30);
+    txt(":"+two(d.getSeconds()),C,C+48,30,ACC,600);
+    var days=["SUN","MON","TUE","WED","THU","FRI","SAT"],mon=["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+    txt(days[d.getDay()]+" "+d.getDate()+" "+mon[d.getMonth()],C,C+98,22,"#8b98a9",600);
+    ringArc(C,C,205,st.steps/500,ACC,8);
+  }
+  function drawAnalog(){
+    var d=new Date(),i;
+    for(i=0;i<60;i++){var a=i/60*Math.PI*2, r1=195, r2=i%5===0?176:186;
+      ctx.beginPath();ctx.strokeStyle=i%5===0?"#c9d3e3":"#54606f";ctx.lineWidth=i%5===0?4:2;
+      ctx.moveTo(C+Math.cos(a)*r1,C+Math.sin(a)*r1);ctx.lineTo(C+Math.cos(a)*r2,C+Math.sin(a)*r2);ctx.stroke();}
+    txt(st.steps.toLocaleString()+" steps",C,C+70,18,"#8b98a9",500);
+    function hand(frac,len,w,col){var a=frac*Math.PI*2-Math.PI/2;ctx.beginPath();ctx.strokeStyle=col;
+      ctx.lineWidth=w;ctx.lineCap="round";ctx.moveTo(C-Math.cos(a)*18,C-Math.sin(a)*18);
+      ctx.lineTo(C+Math.cos(a)*len,C+Math.sin(a)*len);ctx.stroke();}
+    var s=d.getSeconds()+d.getMilliseconds()/1000, m=d.getMinutes()+s/60, h=(d.getHours()%12)+m/60;
+    hand(h/12,95,8,"#e8edf4");hand(m/60,140,6,"#e8edf4");hand(s/60,155,2.5,ACC);
+    ctx.beginPath();ctx.fillStyle=ACC;ctx.arc(C,C,7,0,Math.PI*2);ctx.fill();
+  }
+  function drawWeather(){
+    var wx=C,wy=C-70;
+    ctx.save();
+    var g=ctx.createRadialGradient(wx-14,wy-6,4,wx,wy,46);g.addColorStop(0,"#ffd27a");g.addColorStop(1,"#f5a623");
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(wx-10,wy-6,30,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#c9d3e3";ctx.beginPath();
+    ctx.arc(wx+2,wy+16,26,Math.PI,Math.PI*2);ctx.arc(wx+26,wy+16,18,Math.PI*1.1,Math.PI*2.2);
+    ctx.arc(wx-18,wy+16,16,Math.PI*.9,Math.PI*2);ctx.closePath();ctx.fill();ctx.restore();
+    txt(st.temp+"°",C,C+40,72,"#fff",700);
+    txt(st.cond,C,C+92,20,"#c9d3e3",500);
+    txt("H "+st.hi+"°   L "+st.lo+"°",C,C+124,17,"#8b98a9",500);
+  }
+  var drawers={activity:drawActivity,aurora:drawAurora,analog:drawAnalog,weather:drawWeather};
+
+  function render(){
+    ctx.clearRect(0,0,S,S);
+    ctx.fillStyle="#000";ctx.beginPath();ctx.arc(C,C,C,0,Math.PI*2);ctx.fill();
+    (drawers[st.face]||drawActivity)();
+    if(st.flash>0){ctx.fillStyle="rgba(122,162,247,"+(st.flash*0.35)+")";ctx.beginPath();ctx.arc(C,C,C,0,Math.PI*2);ctx.fill();st.flash-=0.04;}
+  }
+  function loop(){render();requestAnimationFrame(loop);}
+  render(); if(!reduce) loop();
+  if(!reduce){ setInterval(function(){ if(Math.random()<.5){st.steps+=Math.floor(Math.random()*4);} st.hr=78+Math.floor(Math.random()*6);
+    document.getElementById("roSteps").textContent=st.steps.toLocaleString();
+    document.getElementById("roHr").textContent=st.hr; },2200); }
+
+  var echo=document.getElementById("echo");
+  function setEcho(cmd,res){ echo.innerHTML='<span class="p">$</span> '+cmd+(res?'  <span style="color:var(--faint)">→ '+res+'</span>':''); }
+  var notif=document.getElementById("notif"), notifB=document.getElementById("notifB"), device=document.getElementById("device");
+  var msgs=["Meeting in 10 min","Sarah: on my way 🙂","3 new emails","Battery at 78%"];
+  var fi=0;
+  function act(a){
+    if(a==="face"){ fi=(faces.indexOf(st.face)+1)%faces.length; st.face=faces[fi]; setEcho("starmax push-dial "+faceNames[st.face], "installed + activated"); st.flash=1; }
+    else if(a==="sync"){ st.steps+=Math.floor(Math.random()*30+5); st.face="activity"; document.getElementById("roSteps").textContent=st.steps.toLocaleString(); setEcho("starmax sync-health --category 5", "steps "+st.steps+"  dist "+st.dist+"km  cal "+st.cal); }
+    else if(a==="weather"){ st.face="weather"; setEcho("starmax weather", "'"+st.cond+"' "+st.lo+"/"+st.hi+"°C"); }
+    else if(a==="notify"){ var m=msgs[Math.floor(Math.random()*msgs.length)]; notifB.textContent=m; notif.classList.add("show"); setTimeout(function(){notif.classList.remove("show");},2600); setEcho('starmax notify "'+m+'"',"pushed"); }
+    else if(a==="find"){ if(!reduce){device.classList.remove("buzz");void device.offsetWidth;device.classList.add("buzz");} st.flash=1; setEcho("starmax find --duration 5","buzzing…"); }
+    else if(a==="time"){ setEcho("starmax set-time","synced "+new Date().toLocaleTimeString()); st.flash=1; }
+    render();
+  }
+  Array.prototype.forEach.call(document.querySelectorAll(".ctl"),function(b){ b.addEventListener("click",function(){act(b.dataset.act);}); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='8' y='8' width='16' height='16' rx='2' fill='%23161c24' stroke='%237aa2f7' stroke-width='2'/%3E%3Cg stroke='%237aa2f7' stroke-width='2'%3E%3Cpath d='M12 8V5M16 8V5M20 8V5M12 24v3M16 24v3M20 24v3M8 12H5M8 16H5M8 20H5M24 12h3M24 16h3M24 20h3'/%3E%3C/g%3E%3C/svg%3E">
+<title>GTX2 Teardown — Guided Walkthrough</title>
+<style>
+  :root{
+    --bg:#0e1217;--surface:#161c24;--surface-2:#1b232d;--border:#29323f;
+    --text:#e8edf4;--muted:#8b98a9;--faint:#5f6b7b;
+    --accent:#7aa2f7;--ok:#43d17a;--warn:#f5a623;--danger:#f2555a;--steel:#7e8ba3;
+    --accent-bg:#7aa2f71a;--ok-bg:#43d17a1a;--warn-bg:#f5a6231a;--danger-bg:#f2555a1a;
+    --font-sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --radius:14px;--maxw:820px;
+  }
+  @media (prefers-color-scheme:light){
+    :root{
+      --bg:#eef1f6;--surface:#ffffff;--surface-2:#f4f7fb;--border:#dbe2ec;
+      --text:#131922;--muted:#5a6572;--faint:#8a95a4;
+      --accent:#3b6fd4;--ok:#159a52;--warn:#c07d0a;--danger:#c8384d;--steel:#5d6b80;
+      --accent-bg:#3b6fd414;--ok-bg:#159a5216;--warn-bg:#c07d0a16;--danger-bg:#c8384d14;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:clamp(20px,4vw,44px) clamp(16px,4vw,28px) 80px}
+  a{color:var(--accent)}
+  .eyebrow{font-family:var(--font-mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin:0 0 8px}
+  h1{font-size:clamp(26px,5vw,38px);line-height:1.05;margin:0 0 10px;letter-spacing:-.02em;text-wrap:balance;font-weight:680}
+  .lede{color:var(--muted);font-size:clamp(15px,1.8vw,17px);margin:0;max-width:62ch}
+
+  .callout{border:1px solid var(--border);border-left:3px solid var(--c,var(--accent));background:var(--surface);
+    border-radius:12px;padding:14px 16px;margin:20px 0;display:flex;gap:12px;align-items:flex-start}
+  .callout .ic{font-size:20px;line-height:1.3;flex:0 0 auto}
+  .callout .bd{min-width:0}
+  .callout b{font-weight:640}
+  .callout p{margin:4px 0 0;color:var(--muted);font-size:14px}
+  .callout.go{--c:var(--ok)} .callout.danger{--c:var(--danger)} .callout.gate{--c:var(--warn)}
+
+  .step{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    padding:22px 22px 20px;margin:16px 0}
+  .step > h2{margin:0 0 4px;font-size:19px;letter-spacing:-.01em;display:flex;align-items:baseline;gap:12px}
+  .step > h2 .n{font-family:var(--font-mono);font-size:13px;color:var(--accent);background:var(--accent-bg);
+    border-radius:8px;padding:3px 9px;flex:0 0 auto;font-weight:600}
+  .step .intro{color:var(--muted);font-size:14.5px;margin:2px 0 14px}
+  .step ul{margin:0;padding-left:20px;color:var(--muted);font-size:14.5px}
+  .step ul li{margin:6px 0}
+  .step ul li b{color:var(--text)}
+  code,.mono{font-family:var(--font-mono);font-size:.9em;background:var(--surface-2);border:1px solid var(--border);border-radius:5px;padding:1px 6px}
+
+  /* shot-list checklist */
+  .progress{display:flex;align-items:center;gap:12px;margin:0 0 14px;font-family:var(--font-mono);font-size:13px;color:var(--muted)}
+  .bar{flex:1;height:8px;background:var(--surface-2);border:1px solid var(--border);border-radius:99px;overflow:hidden}
+  .bar > i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s ease}
+  .shots{list-style:none;margin:0;padding:0}
+  .shot{display:flex;gap:12px;align-items:flex-start;padding:11px 12px;border:1px solid var(--border);
+    border-radius:10px;margin:8px 0;background:var(--surface-2);cursor:pointer;transition:border-color .15s,opacity .15s}
+  .shot:hover{border-color:var(--accent)}
+  .shot input{margin:2px 0 0;width:18px;height:18px;accent-color:var(--accent);flex:0 0 auto;cursor:pointer}
+  .shot .t{font-size:14.5px}
+  .shot .t small{display:block;color:var(--faint);font-size:12.5px;margin-top:2px;line-height:1.45}
+  .shot.key{border-color:var(--warn)}
+  .shot.key .t b::before{content:"★ ";color:var(--warn)}
+  .shot.done{opacity:.55}
+  .shot.done .t{text-decoration:line-through;text-decoration-color:var(--faint)}
+  .reset{margin-top:10px;font-family:var(--font-mono);font-size:12px;background:none;border:1px solid var(--border);
+    color:var(--muted);border-radius:8px;padding:6px 12px;cursor:pointer}
+  .reset:hover{border-color:var(--danger);color:var(--danger)}
+  .reset:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  .rseq{list-style:none;margin:8px 0 0;padding:0}
+  .rseq li{display:flex;gap:12px;padding:10px 0;border-top:1px solid var(--border)}
+  .rseq li:first-child{border-top:none}
+  .rseq .rk{font-family:var(--font-mono);font-weight:700;color:var(--accent);flex:0 0 34px}
+  .rseq .rb{font-size:14.5px}
+  .rseq .rb small{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+
+  .chips{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1px;background:var(--border);
+    border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-top:8px}
+  .chipc{background:var(--surface);padding:13px 15px}
+  .chipc .k{font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .chipc .v{font-size:14px;margin-top:3px}
+  .chipc .v b{font-family:var(--font-mono)}
+  footer{margin-top:34px;font-family:var(--font-mono);font-size:12px;color:var(--faint);text-align:center;line-height:1.7}
+</style>
+</head>
+<body>
+<nav style="max-width:960px;margin:0 auto;padding:16px 20px 0;font-family:ui-monospace,Menlo,monospace;font-size:13px;display:flex;gap:18px;flex-wrap:wrap">
+  <a href="index.html" style="color:inherit;opacity:.7;text-decoration:none">← Starmax GTX2</a>
+  <a href="gtx2-face-builder.html" style="color:inherit;opacity:.7;text-decoration:none">Face builder</a>
+  <a href="https://github.com/jphein/starmax-gtx2" style="color:inherit;opacity:.7;text-decoration:none">GitHub ↗</a>
+</nav>
+<div class="wrap">
+
+  <p class="eyebrow">Starmax GTX2 · custom-firmware track</p>
+  <h1>Teardown — guided walkthrough</h1>
+  <p class="lede">A step-by-step guide to safely opening a <b>spare</b> GTX2 and capturing the photos we
+  need to find a firmware-recovery path. Tick each shot as you take it — your progress is saved on this device.</p>
+
+  <div class="callout go"><span class="ic">✅</span><div class="bd"><b>Verdict: conditional GO — on the spare only.</b>
+    <p>A sacrificial unit means the worst case is a dead spare, never your daily watch — and it lets us
+    <i>prove</i> recovery, which is the gate that was missing before. Keep your daily driver on stock.</p></div></div>
+
+  <div class="callout danger"><span class="ic">⛔</span><div class="bd"><b>Hard rule: no custom flash until backup + restore is proven.</b>
+    <p>We read the stock flash to a <code>golden.bin</code> and prove we can write it back <i>first</i>.
+    The flash is an external SPI-NOR chip, so a programmer can always re-flash it — that's the safety net.</p></div></div>
+
+  <section class="step">
+    <h2><span class="n">00</span> Before you start</h2>
+    <ul>
+      <li><b>Use a SPARE.</b> Never the daily driver.</li>
+      <li><b>Power the watch off</b> before opening.</li>
+      <li>Opening <b>voids water resistance</b> (gasket/adhesive won't reseal well).</li>
+      <li>Go <b>slow near the LiPo battery and the ribbon/FPC cables</b> — don't puncture the cell or tear a flex.</li>
+      <li>Have a <b>macro-capable camera</b> and good, raking light (side-lit shows silkscreen text + pads best).</li>
+      <li>Tools: plastic spudger/pry, fine tweezers, small Phillips if screwed. <span class="mono">(Later, for recovery: an SWD probe — ST-Link/J-Link/CMSIS-DAP — or a SPI-NOR programmer + a clip for the flash chip.)</span></li>
+    </ul>
+  </section>
+
+  <section class="step">
+    <h2><span class="n">01</span> Open the case — INSPECT FIRST, don't pry yet</h2>
+    <p class="intro"><b>Direction is not yet settled — decide it from the closed unit, not by guessing.</b> The FCC photos show the watch <i>fully disassembled</i> (back puck off in Fig 1, front module off in Fig 2), so they reveal what's on which face but <b>not the intended service seam</b>. Evidence <b>leans FRONT</b> (the component side with the SoC/flash/pads carries the two display/touch FPC connectors — Figs 12/13 — so it sits under the display), but that's an inference, not proof. So: <b>look before you open.</b></p>
+    <div class="callout danger"><span class="ic">⛔</span><div class="bd"><b>These hold either direction: no heat gun; don't force a bonded AMOLED; mind the LiPo + FPCs.</b>
+      <p>Heat = <b>heat pad / hair-dryer ≤70 °C</b> only (a gun cooks the LiPo / delaminates the panel). Never pry <i>against</i> the AMOLED glass or the LiPo. Plastic tools only.</p></div></div>
+    <p class="intro"><b>THE DECIDER — check the closed spare + photograph before prying:</b></p>
+    <ul>
+      <li><b>Back:</b> is there a removable plate? Look for <b>screws</b> (under the HR-sensor ring, a label, or rubber plugs) or a <b>pry seam / gasket line</b> around the rim. Back screws or a clean back seam ⇒ <b>back-service</b> (remove back → battery → possibly flip the PCB to reach the component side).</li>
+      <li><b>Front:</b> is the glass/bezel a <b>bonded display with no seam</b>? That ⇒ <b>front-service</b> (heat + pick the display assembly out; it's tethered by the 2 display/touch FPCs).</li>
+      <li><b>Photograph CLOSED first:</b> back, front, and the edge/seam — shot #1. Then report: <b>screws (how many/what head) or a glued seam? which face has the removable cover?</b> That settles the direction; we finalize this step from your photos.</li>
+    </ul>
+    <p class="intro"><b>Once you're in (either way):</b> the target is the <b>component side</b> (SoC/flash + 2 FPC connectors). Watch the <b>2 display/touch FPCs</b> (flip the latch, don't pull the ribbon) and the <b>LiPo</b>. Then macro the pad cluster <b>NW of the SoC</b> (Fig-13 red arrow) — the SWD/test-point candidate.</p>
+  </section>
+
+  <section class="step">
+    <h2><span class="n">📷</span> FCC internal photos — the board, before you open</h2>
+    <p class="intro">From the public FCC filing (ID <code>2ASAU-GTX2</code>) — this is the <b>exact GTX2 board</b>, so you know what you're looking at once you're in. Fine pad detail still comes from <b>your</b> macros; these give you the layout + landmarks.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-top:14px">
+      <figure style="margin:0">
+        <img src="fcc/board-incase.jpg" alt="GTX2 component side, back removed, in case" style="width:100%;display:block;border-radius:10px;border:1px solid var(--border,#29323f)">
+        <figcaption style="font-size:12.5px;color:var(--muted,#8b98a9);margin-top:6px;line-height:1.5"><b>Component side, back off</b> (Fig 3). Silk <code>CB05-MTL MB V1.2</code>. The <b>ATS3085S4</b> SoC is center-right; the <b>XT25F128F</b> flash sits just below-left of it; the <b>crown</b> is at 3 o'clock; battery leads (B+/B−, A+/A−) tack to the left edge. <b>★ Hunt the SWD / test-point pads just NW of the SoC.</b></figcaption>
+      </figure>
+      <figure style="margin:0">
+        <img src="fcc/board-front.jpg" alt="GTX2 bare board, component side" style="width:100%;display:block;border-radius:10px;border:1px solid var(--border,#29323f)">
+        <figcaption style="font-size:12.5px;color:var(--muted,#8b98a9);margin-top:6px;line-height:1.5"><b>Bare board, component side</b> (Fig 10) — same layout, out of the case. The 2–6-gold-pad <b>SWD/UART cluster</b> hides near the SoC edge or under the display FPC.</figcaption>
+      </figure>
+      <figure style="margin:0">
+        <img src="fcc/board-back.jpg" alt="GTX2 bare board, solder/shield side" style="width:100%;display:block;border-radius:10px;border:1px solid var(--border,#29323f)">
+        <figcaption style="font-size:12.5px;color:var(--muted,#8b98a9);margin-top:6px;line-height:1.5"><b>Solder / shield side</b> (Fig 9) — RF cans. Pads can also live <i>under</i> a can or beside the FPC — check both faces.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="step">
+    <h2><span class="n">02</span> The photo shot-list</h2>
+    <p class="intro">Tick each as you capture it. <b>★ starred = the recovery gate</b> — the most important shots.</p>
+    <div class="progress"><span id="count">0 / 12 captured</span><span class="bar"><i id="fill"></i></span></div>
+    <ul class="shots" id="shots">
+      <li class="shot"><input type="checkbox"><span class="t"><b>Skin-side PCB, in situ</b><small>before lifting — PPG sensor + gasket</small></span></li>
+      <li class="shot"><input type="checkbox"><span class="t"><b>Whole component-side PCB</b><small>straight down, whole board</small></span></li>
+      <li class="shot"><input type="checkbox"><span class="t"><b>Whole skin-side PCB</b><small>straight down, whole board</small></span></li>
+      <li class="shot key"><input type="checkbox"><span class="t"><b>Macro: SoC marking</b><small>confirm <code>ATS3085 / S4</code> + eagle logo</small></span></li>
+      <li class="shot key"><input type="checkbox"><span class="t"><b>Macro: flash chip</b><small>confirm <code>XT25F128F</code>; note leadless (WSON) vs leaded (SOP)</small></span></li>
+      <li class="shot"><input type="checkbox"><span class="t"><b>Macro: small QFN near the SoC</b><small>WTM2101 candidate (sensor hub?)</small></span></li>
+      <li class="shot"><input type="checkbox"><span class="t"><b>Macro: RF / GNSS corner</b><small>UC6228CI + antenna</small></span></li>
+      <li class="shot"><input type="checkbox"><span class="t"><b>Macro: charge cluster</b><small>BP2A579000 + 3304J</small></span></li>
+      <li class="shot key"><input type="checkbox"><span class="t"><b>Macro: EVERY pad cluster / test-point group</b><small>both sides, with a scale ref — start with the upper-left cluster from the FCC photos. This decides the recovery path.</small></span></li>
+      <li class="shot key"><input type="checkbox"><span class="t"><b>Macro: silk text near pads</b><small>look for <code>DIO CLK RST RX TX SWD TP1..n</code></small></span></li>
+      <li class="shot"><input type="checkbox"><span class="t"><b>Macro: battery pads</b><small>B+/B−, A+/A−</small></span></li>
+      <li class="shot"><input type="checkbox"><span class="t"><b>Board silk + revision</b><small>e.g. <code>CB05-MTL MB V1.2</code></small></span></li>
+    </ul>
+    <button class="reset" id="reset" type="button">Reset progress</button>
+  </section>
+
+  <section class="step">
+    <h2><span class="n">03</span> The recovery gate — what we're hunting for</h2>
+    <p class="intro">A <b>wired path</b> to read + rewrite the flash. Any one of these is enough:</p>
+    <ul>
+      <li><b>SWD debug pads</b> — a 2–6 pad cluster near the SoC: <code>SWDIO</code>, <code>SWCLK</code>, usually <code>GND</code>, sometimes <code>nRESET</code> / <code>VCC</code> / <code>SWO</code>.</li>
+      <li><b>UART</b> — 2–3 pads; the <code>TX</code> line idles high and bursts at boot (~2 Mbaud). Useful for logs, maybe a bootloader.</li>
+      <li><b>The flash chip directly</b> — <code>XT25F128F</code> is an <b>external SPI-NOR</b>. A clip or flying leads on its pins let a programmer read/write it <i>regardless of any SoC lock</i>. This is the fallback that makes a permanent brick unlikely.</li>
+      <li>Any isolated gold pad or via = a candidate test point — photograph it.</li>
+    </ul>
+  </section>
+
+  <section class="step">
+    <h2><span class="n">04</span> Recovery sequence — the safety gate</h2>
+    <p class="intro">We do <b>R1 → R3 before any custom flash.</b> This is non-negotiable.</p>
+    <ul class="rseq">
+      <li><span class="rk">R1</span><span class="rb"><b>Establish wired access</b><small>SWD probe + OpenOCD "connect under reset", read the M33 IDCODE (proves SWD is alive, not fused). Dead SWD → SPI-NOR programmer on the flash.</small></span></li>
+      <li><span class="rk">R2</span><span class="rb"><b>Back up the stock flash → <code>golden.bin</code></b><small>read the full chip twice, compare, verify the size, keep off-device copies. Do this FIRST.</small></span></li>
+      <li><span class="rk">R3</span><span class="rb"><b>Prove restore</b><small>write <code>golden.bin</code> back and confirm the watch boots. This is the hinge: if a later flash bricks it, you re-flash golden.</small></span></li>
+      <li><span class="rk">R4</span><span class="rb"><b>Custom flash — only after R3 passes</b><small>flash the modified image; on any failure, restore golden. Start app-only (keeps the stock recovery/bootloader untouched).</small></span></li>
+    </ul>
+  </section>
+
+  <section class="step">
+    <h2><span class="n">05</span> Hand off the photos</h2>
+    <ul>
+      <li>Save every shot into <code>docs/teardown-photos/</code> in the project.</li>
+      <li>Tell your assistant they're in — it reads them, identifies the SoC / flash / debug pads, and routes to the firmware agent to turn the pad layout into the concrete <b>R1 wiring</b>.</li>
+      <li>Then we source the right probe/programmer and start at R1. <b>Nothing gets flashed before the backup + restore is proven.</b></li>
+    </ul>
+  </section>
+
+  <h2 style="font-size:16px;margin:34px 0 0;letter-spacing:-.01em">Chip reference</h2>
+  <div class="chips">
+    <div class="chipc"><div class="k">Application SoC</div><div class="v"><b>Actions ATS3085S4</b> · Cortex-M33 @ 202 MHz · Zephyr</div></div>
+    <div class="chipc"><div class="k">Audio DSP</div><div class="v"><b>CEVA TL420</b> @ 202 MHz</div></div>
+    <div class="chipc"><div class="k">Memory</div><div class="v"><b>1168 KB SRAM</b> + 4/8 MB DDR PSRAM</div></div>
+    <div class="chipc"><div class="k">AI co-processor</div><div class="v"><b>WTM2101</b> · RISC-V</div></div>
+    <div class="chipc"><div class="k">Flash (the target)</div><div class="v"><b>XT25F128F</b> · SPI-NOR · 16 MiB</div></div>
+    <div class="chipc"><div class="k">GNSS</div><div class="v"><b>Unicore UC6228CI</b></div></div>
+    <div class="chipc"><div class="k">Accelerometer</div><div class="v"><b>ST LIS2DH12</b></div></div>
+    <div class="chipc"><div class="k">Heart rate / SpO₂</div><div class="v"><b>HX3918</b> · PPG</div></div>
+    <div class="chipc"><div class="k">Magnetometer</div><div class="v"><b>QMC6308</b></div></div>
+    <div class="chipc"><div class="k">Barometer</div><div class="v"><b>SPL07-003</b></div></div>
+    <div class="chipc"><div class="k">Charge / PMIC</div><div class="v"><b>BP2A579000</b> + 3304J</div></div>
+    <div class="chipc"><div class="k">Battery</div><div class="v"><b>390 mAh</b> LiPo · 3.8 V</div></div>
+    <div class="chipc"><div class="k">Board silk</div><div class="v"><b>CB05-MTL MB V1.2</b></div></div>
+  </div>
+
+  <div class="callout gate" style="margin-top:24px"><span class="ic">🧯</span><div class="bd"><b>Why a brick is unlikely (with the right tool).</b>
+    <p>The flash is external SPI-NOR, so a programmer reads/writes it directly — bypassing any SWD lock or SoC
+    read-protection. Secure-boot (if the eFuse is burned) only gates the recovery bootloader; an app-only mod
+    leaves that untouched. The real risks left: the flash may be leadless (WSON — trickier to clip), and
+    opening the watch ends its water resistance.</p></div></div>
+
+  <footer>
+    GTX2 custom-firmware track · plan: docs/hardware-teardown-guide.md §0.5<br>
+    spare unit only · daily driver stays on stock · no flash before proven restore
+  </footer>
+</div>
+
+<script>
+(function(){
+  var KEY="gtx2-teardown-shots-v1";
+  var shots=[].slice.call(document.querySelectorAll("#shots .shot"));
+  var count=document.getElementById("count"), fill=document.getElementById("fill");
+  var saved={};
+  try{ saved=JSON.parse(localStorage.getItem(KEY)||"{}"); }catch(e){ saved={}; }
+  function paint(){
+    var done=0;
+    shots.forEach(function(li,i){
+      var cb=li.querySelector("input");
+      cb.checked=!!saved[i];
+      li.classList.toggle("done",cb.checked);
+      if(cb.checked) done++;
+    });
+    count.textContent=done+" / "+shots.length+" captured";
+    fill.style.width=(done/shots.length*100)+"%";
+  }
+  function save(){ try{ localStorage.setItem(KEY,JSON.stringify(saved)); }catch(e){} }
+  shots.forEach(function(li,i){
+    var cb=li.querySelector("input");
+    function toggle(){ saved[i]=cb.checked; save(); paint(); }
+    cb.addEventListener("change",toggle);
+    li.addEventListener("click",function(e){ if(e.target!==cb){ cb.checked=!cb.checked; toggle(); } });
+  });
+  document.getElementById("reset").addEventListener("click",function(){ saved={}; save(); paint(); });
+  paint();
+})();
+</script>
+</body>
+</html>

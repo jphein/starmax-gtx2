@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GTX2 Face Builder &amp; Field Reference</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%230a0d12' stroke='%237aa2f7' stroke-width='2'/%3E%3Ctext x='16' y='21' font-size='11' text-anchor='middle' fill='%23ff3b30' font-family='monospace' font-weight='bold'%3EkW%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --ground: #0a0d12; --panel: #141b26; --panel2: #1b2430; --line: #26313f;
+    --text: #e7edf5; --muted: #8b98a9; --dim: #5f6b7c;
+    --blue: #7aa2f7; --red: #ff3b30; --green: #43d17a; --pink: #f77c9a;
+    --amber: #f5a623; --cyan: #6fd3e0;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, sans-serif;
+    --maxw: 1180px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --ground:#eef1f6; --panel:#ffffff; --panel2:#f4f7fb; --line:#d5dce6;
+            --text:#152030; --muted:#5a6675; --dim:#8b97a6; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--ground); color: var(--text);
+         font-family: var(--sans); line-height: 1.6;
+         -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+  a { color: var(--blue); }
+  h1,h2,h3 { text-wrap: balance; line-height: 1.15; margin: 0; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .18em;
+             text-transform: uppercase; color: var(--blue); }
+  .muted { color: var(--muted); }
+  code { font-family: var(--mono); font-size: .9em; background: var(--panel2);
+         padding: 1px 6px; border-radius: 5px; border: 1px solid var(--line); }
+
+  /* ---- header ---- */
+  header { border-bottom: 1px solid var(--line);
+           background: linear-gradient(180deg, var(--panel) 0%, var(--ground) 100%); }
+  .hero { display: grid; grid-template-columns: 380px 1fr; gap: 40px;
+          padding: 48px 24px 44px; align-items: center; max-width: var(--maxw); margin: 0 auto; }
+  .hero h1 { font-size: clamp(28px, 3.6vw, 44px); font-weight: 800; letter-spacing: -.02em;
+             margin: 14px 0 12px; }
+  .hero p { color: var(--muted); font-size: 16px; max-width: 46ch; margin: 0; }
+  .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+  .badge { font-family: var(--mono); font-size: 11.5px; color: var(--muted);
+           border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px;
+           background: var(--panel2); }
+  .badge b { color: var(--text); font-weight: 600; }
+
+  /* ---- watch preview ---- */
+  .watchcol { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  .bezel { width: 320px; height: 320px; border-radius: 50%; flex: 0 0 auto;
+           background: radial-gradient(circle at 50% 35%, #1a222e, #05070a 72%);
+           box-shadow: 0 30px 60px -24px #000c, inset 0 0 0 6px #05070a,
+                       inset 0 0 0 8px #232c3a; display: grid; place-items: center; }
+  canvas.face { border-radius: 50%; }
+  .live { font-family: var(--mono); font-size: 11px; color: var(--dim);
+          display: flex; align-items: center; gap: 7px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green);
+         box-shadow: 0 0 0 3px #43d17a22; animation: pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
+
+  /* ---- controls ---- */
+  .controls { display: grid; gap: 14px; }
+  .ctl-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .toggle { display: flex; align-items: center; gap: 9px; font-family: var(--mono);
+            font-size: 13px; padding: 9px 11px; border: 1px solid var(--line);
+            border-radius: 9px; background: var(--panel2); cursor: pointer;
+            user-select: none; transition: border-color .15s, background .15s; }
+  .toggle:hover { border-color: var(--blue); }
+  .toggle input { accent-color: var(--blue); width: 15px; height: 15px; margin: 0; }
+  .sw { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 auto; }
+  .sliders { display: grid; gap: 12px; margin-top: 4px; }
+  .slider label { display: flex; justify-content: space-between; font-family: var(--mono);
+                  font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  .slider label b { color: var(--text); font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--blue); }
+  input:focus-visible, .toggle:focus-within { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+  /* ---- sections ---- */
+  main { padding: 56px 0 80px; }
+  section { padding: 40px 0; border-top: 1px solid var(--line); }
+  section > .wrap > h2 { font-size: 24px; font-weight: 750; letter-spacing: -.01em; margin-bottom: 6px; }
+  .lead { color: var(--muted); max-width: 68ch; margin: 8px 0 26px; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px,1fr)); gap: 14px; }
+  .card { border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+          padding: 18px; }
+  .card h3 { font-family: var(--mono); font-size: 14px; color: var(--text); margin-bottom: 7px;
+             display: flex; align-items: center; gap: 8px; }
+  .card p { color: var(--muted); font-size: 13.5px; margin: 0; }
+  .card .tag { font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em;
+               text-transform: uppercase; color: var(--dim); }
+
+  /* ---- matrix ---- */
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+  table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 13.5px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+  thead th { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+             color: var(--muted); background: var(--panel2); position: sticky; top: 0; }
+  tbody td:first-child { font-family: var(--mono); color: var(--text); white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--panel2); }
+  .yes { color: var(--green); font-weight: 600; }
+  .no  { color: var(--red); }
+  .partial { color: var(--amber); }
+  .pill { font-family: var(--mono); font-size: 11px; padding: 2px 8px; border-radius: 999px;
+          border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .pill.push { color: var(--green); border-color: #43d17a55; }
+  .pill.sensor { color: var(--cyan); border-color: #6fd3e055; }
+  .pill.fixed { color: var(--amber); border-color: #f5a62355; }
+
+  .callout { border: 1px solid var(--line); border-left: 3px solid var(--blue);
+             background: var(--panel); border-radius: 10px; padding: 16px 18px; margin: 18px 0; }
+  .callout.kw { border-left-color: var(--red); }
+  .callout h3 { font-size: 15px; margin-bottom: 6px; }
+  .callout p { color: var(--muted); font-size: 14px; margin: 6px 0 0; }
+
+  .steps { display: grid; gap: 12px; counter-reset: s; }
+  .step { display: grid; grid-template-columns: 30px 1fr; gap: 14px; align-items: start; }
+  .step::before { counter-increment: s; content: counter(s); font-family: var(--mono);
+                  font-size: 13px; color: var(--blue); border: 1px solid var(--line);
+                  border-radius: 8px; width: 30px; height: 30px; display: grid; place-items: center; }
+  .step p { margin: 3px 0 0; color: var(--muted); font-size: 14px; }
+  .step b { color: var(--text); font-weight: 600; }
+
+  footer { border-top: 1px solid var(--line); padding: 28px 24px; text-align: center;
+           color: var(--dim); font-family: var(--mono); font-size: 12px; }
+
+  @media (max-width: 820px) {
+    .hero { grid-template-columns: 1fr; gap: 28px; text-align: center; }
+    .hero p { margin-inline: auto; }
+    .badges { justify-content: center; }
+  }
+</style>
+</head>
+<body>
+
+<nav style="max-width:960px;margin:0 auto;padding:16px 20px 0;font-family:ui-monospace,Menlo,monospace;font-size:13px;display:flex;gap:18px;flex-wrap:wrap">
+  <a href="index.html" style="color:inherit;opacity:.7;text-decoration:none">← Starmax GTX2</a>
+  <a href="teardown.html" style="color:inherit;opacity:.7;text-decoration:none">Teardown</a>
+  <a href="https://github.com/jphein/starmax-gtx2" style="color:inherit;opacity:.7;text-decoration:none">GitHub ↗</a>
+</nav>
+
+<header>
+  <div class="hero">
+    <div class="watchcol">
+      <div class="bezel"><canvas class="face" width="600" height="600" style="width:288px;height:288px" aria-label="Live watch face preview"></canvas></div>
+      <div class="live"><span class="dot"></span> live preview · drag the controls</div>
+    </div>
+    <div>
+      <div class="eyebrow">Starmax GTX2 · custom watch faces</div>
+      <h1>Face Builder &amp; Field Reference</h1>
+      <p>Every component the GTX2 face format supports, every data field you can push from Home Assistant or read from the watch, and which combinations actually render — mapped on real hardware.</p>
+      <div class="badges">
+        <span class="badge"><b>6</b> component types</span>
+        <span class="badge"><b>22</b> data bindings</span>
+        <span class="badge">round <b>466&times;466</b></span>
+        <span class="badge">live via <b>set_time_custom</b></span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section style="border-top:none">
+    <div class="wrap">
+      <div class="eyebrow">Try it</div>
+      <h2>Compose a face</h2>
+      <p class="lead">Toggle components on and off and drive the values — the preview above updates the way the watch would. This is the exact layout of the live grid-watts face: a clock, a pushed kW number, a battery ring, and a heart-rate complication.</p>
+      <div class="controls">
+        <div class="ctl-grid" id="toggles"></div>
+        <div class="sliders" id="sliders"></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="eyebrow">Concept</div>
+      <h2>How a face works</h2>
+      <p class="lead">A custom face is a static image container — a background plus glyph/asset files — with <em>widgets</em> positioned on top. Each widget is <em>bound</em> to one data field the watch already tracks. There is no free-form data channel: to show an external value you smuggle it into a field the firmware renders.</p>
+      <div class="steps">
+        <div class="step"><div><b>Build the container.</b><p>A background image + per-digit glyph fonts, packed into the native dial format (RGB565 + LZ4). Each image asset's LZ4 match length is capped at 512 bytes or the watch's minimal decoder garbles it.</p></div></div>
+        <div class="step"><div><b>Install once, over BLE.</b><p>Streamed to the watch via the D-plane push (chunked). Installs are reliable on a contention-free radio; the node serialises pushes so concurrent watches don't collide.</p></div></div>
+        <div class="step"><div><b>Update live — no re-push.</b><p>Values ride the RTC. <code>set_time_custom(hour, minute, second, day)</code> writes the clock fields; the widgets bound to them re-render on the watch. Changing the value is one small frame, never a new image.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="eyebrow">Components</div>
+      <h2>The six widget types</h2>
+      <p class="lead">Every element on a face is one of these. A widget's <em>kind</em> is how it draws; its <em>binding</em> is what data drives it.</p>
+      <div class="cards">
+        <div class="card"><h3><span class="sw" style="background:var(--blue)"></span>text</h3><p>A number drawn from a per-digit glyph font, bound to a field (<code>hour</code>, <code>day</code>, <code>heart</code>…). The workhorse. Each font renders at its own baked size — reuse a big font and you get big digits.</p><span class="tag">clock · kW number · BPM</span></div>
+        <div class="card"><h3><span class="sw" style="background:var(--green)"></span>arc</h3><p>A curved progress bar / ring that fills proportional to its bound field. Used for the battery ring — and it works on a <em>pushed</em> field too (see below).</p><span class="tag">battery ring · gauges</span></div>
+        <div class="card"><h3><span class="sw" style="background:var(--pink)"></span>pointer</h3><p>A rotating hand sprite — analog clock hands, driven by <code>hour</code>/<code>min</code>/<code>second</code>.</p><span class="tag">analog hands</span></div>
+        <div class="card"><h3><span class="sw" style="background:var(--amber)"></span>array</h3><p>A repeated set of elements — e.g. a step-history mini bar chart (<code>steplist</code>).</p><span class="tag">step history</span></div>
+        <div class="card"><h3><span class="sw" style="background:var(--cyan)"></span>curved</h3><p>Text laid out along a curved baseline, for text that follows the round bezel.</p><span class="tag">curved labels</span></div>
+        <div class="card"><h3><span class="sw" style="background:var(--muted)"></span>icon</h3><p>A static image — the full-screen background, or a small baked graphic like the heart glyph next to a BPM number.</p><span class="tag">background · icons</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="eyebrow">The map</div>
+      <h2>Push &amp; display matrix</h2>
+      <p class="lead">Which fields can carry a value pushed from Home Assistant, which only display the watch's own sensors, and which are formatted so they can't hold a bare number. Verified widget-by-widget on hardware with a labeled diagnostic face.</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Field</th><th>Push from HA</th><th>Holds a value?</th><th>Range</th><th>Renders as</th><th>Use it for</th></tr></thead>
+          <tbody>
+            <tr><td>day</td><td class="yes">yes · live</td><td class="yes">holds ✓</td><td>1–31</td><td>plain number (1–2 digits)</td><td><b>The primary value carrier.</b> Integer kW lives here — pushed 23 → rendered "23", proven clean on-glass (2026-07-16). Only rolls over at midnight, so a pushed value stays put.</td></tr>
+            <tr><td>month</td><td class="yes">yes · live</td><td class="yes">holds ✓</td><td>1–12</td><td>plain number (raw)</td><td><b>Second value carrier</b> — proven clean (pushed 8 → "8", 2026-07-16). The 6-arg setter is now flashed. Capped at 1–12 (not a full 0–9); carries the tenths digit of the decimal readout.</td></tr>
+            <tr><td>week <span class="muted">(weekday)</span></td><td class="no">no</td><td class="no">derived</td><td>0–6</td><td>plain number</td><td><b>Not usable.</b> The firmware <b>derives</b> weekday from the (hijacked) date and <b>ignores</b> what you push — proven 2026-07-16 (pushed 5 then 2, both rendered 6). Not a value carrier.</td></tr>
+            <tr><td>hour</td><td class="yes">yes</td><td class="partial">clock</td><td>0–23</td><td>big digits</td><td>Clock hours. Hero-sized. (Ticks with real time.)</td></tr>
+            <tr><td>min</td><td class="yes">yes</td><td class="partial">clock</td><td>0–59</td><td>big digits</td><td>Clock minutes.</td></tr>
+            <tr><td>second</td><td class="yes">yes</td><td class="no">ticks ⚠</td><td>0–59</td><td>digits</td><td>Clock seconds <b>only</b> — never a held value: it ticks away every second, so a pushed number won't stay.</td></tr>
+            <tr><td>date</td><td class="no">no</td><td class="no">—</td><td>MM-DD</td><td>compound "0731"</td><td><b>Avoid.</b> Formats month+day together — can't show a bare number. (This was the "70/71" phantom.)</td></tr>
+            <tr><td>hourhi / hourlo</td><td class="partial">tied</td><td class="partial">clock</td><td>0–9</td><td>single digit</td><td>The two digits <em>of</em> the clock's hour — not an independent channel.</td></tr>
+            <tr><td>minhi / minlo</td><td class="partial">tied</td><td class="partial">clock</td><td>0–9</td><td>single digit</td><td>The two digits of the clock's minute.</td></tr>
+            <tr><td>battery</td><td class="no">no</td><td class="yes">sensor</td><td>0–100%</td><td>% / arc ring</td><td>Watch charge — display-only. Ideal as an <code>arc</code> ring (proven).</td></tr>
+            <tr><td>heart</td><td class="no">no</td><td class="yes">sensor</td><td>BPM</td><td>number</td><td>Live HR — display-only. Needs its own small font (fonts render at native size).</td></tr>
+            <tr><td>step</td><td class="no">no</td><td class="yes">sensor</td><td>count</td><td>number</td><td>Pedometer — display-only.</td></tr>
+            <tr><td>distance</td><td class="no">no</td><td class="yes">sensor</td><td>km / mi</td><td>number</td><td>Display-only.</td></tr>
+            <tr><td>calorie</td><td class="no">no</td><td class="yes">sensor</td><td>kcal</td><td>number</td><td>Display-only.</td></tr>
+            <tr><td>steplist</td><td class="no">no</td><td class="yes">sensor</td><td>history</td><td>array of bars</td><td>Step history via an <code>array</code> widget — display-only.</td></tr>
+            <tr><td>background</td><td class="no">n/a</td><td class="no">—</td><td>image</td><td>full screen</td><td>The 466×466 base image (icon widget).</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted" style="font-size:13px;margin-top:14px"><span class="yes">yes/holds</span> pushable &amp; stays put &nbsp; <span class="no">ticks</span> auto-increments — clock only &nbsp; <span class="yes">sensor</span> watch-driven, display-only &nbsp; <span class="partial">soon*</span> pushable once the 6-arg setter is flashed to the node</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="eyebrow">Decision guide</div>
+      <h2>Which field for what</h2>
+      <p class="lead">The one rule that governs everything: a pushed value only stays if it lands on a field that <em>holds</em> — one the firmware doesn't tick or reformat. That's why a clock uses seconds happily but a data value never can.</p>
+      <div class="cards">
+        <div class="card"><h3><span class="sw" style="background:var(--red)"></span>A number that must hold</h3><p>Use <code>day</code> (1–31). It only changes at midnight, so a pushed value stays. This is where integer kW lives. It's a 2-digit field, so it alone covers 1–31.</p><span class="tag">day · proven · live now</span></div>
+        <div class="card"><h3><span class="sw" style="background:var(--blue)"></span>The clock</h3><p>Use <code>hour</code> + <code>min</code> (+ <code>second</code> if you want ticking seconds). Seconds are fine here <em>because</em> they tick — that's what a clock does.</p><span class="tag">hour · min · second</span></div>
+        <div class="card"><h3><span class="sw" style="background:var(--amber)"></span>Extra digits</h3><p>Only <code>day</code> (1–31) and <code>month</code> (1–12) carry pushed values — both proven clean on-glass. <code>week</code>/weekday looked promising but the firmware derives it from the date and ignores pushes, so it's out. Two carriers is enough for a one-decimal readout.</p><span class="tag">day + month · proven 2026-07-16</span></div>
+        <div class="card"><h3><span class="sw" style="background:var(--green)"></span>A gauge / bar</h3><p>An <code>arc</code> widget. Bind it to <code>battery</code> for the charge ring, or to <code>day</code> for a kW gauge that fills with the pushed value.</p><span class="tag">arc → battery · arc → day</span></div>
+        <div class="card"><h3><span class="sw" style="background:var(--pink)"></span>Live watch stats</h3><p><code>heart</code>, <code>step</code>, <code>distance</code>, <code>calorie</code>, <code>battery</code> — the watch fills these from its own sensors. Display them; you can't push them.</p><span class="tag">sensor · display-only</span></div>
+        <div class="card"><h3><span class="sw" style="background:var(--muted)"></span>Never for data</h3><p><code>second</code> (ticks away within a second) and <code>date</code> (formats as "MM-DD", e.g. "0731"). Both look tempting; both destroy a pushed number.</p><span class="tag">second · date · avoid</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="eyebrow">Pushing values</div>
+      <h2>Getting a number onto the watch</h2>
+      <p class="lead">There's no weather or arbitrary-text binding, so an external value has to ride a clock/calendar field. The live grid-watts face keeps the real clock on <code>hour</code>/<code>min</code> and puts kilowatts on <code>day</code>.</p>
+      <div class="callout kw">
+        <h3>Grid-watts encoding (live today)</h3>
+        <p><code>hour</code>, <code>min</code>, <code>second</code> = real time (clock stays correct) · <code>day</code> = <code>round(kW)</code>, an integer 1–31 · every watt change just re-writes the RTC via <code>set_time_custom</code>, no image push. Caveat: nothing else may sync real time to that watch or it overwrites <code>day</code> with the real date — the scheduler excludes the live-kW watch so its driver is the sole clock writer.</p>
+      </div>
+      <div class="callout kw">
+        <h3>The decimal: day.month = "1.1&nbsp;kW"</h3>
+        <p>One decimal is enough, so the readout is <code>day</code> (integer kW) + a baked "." + <code>month</code> (tenths) — <b>shipped &amp; live on the daily 2026-07-16</b>. Both hold. The driver pushes <code>month = tenths</code> directly (0–9): RTC month is nominally 1–12, but the display widget renders the raw byte, so <b><code>month = 0</code> shows "0"</b> (HW-confirmed) — so an exact "3.0&nbsp;kW" is reachable with <b>no</b> offset font or trick. <code>week</code>/weekday can't help (the firmware derives it from the date). The fuller total-watts idea is shelved — one decimal covers the grid range cleanly. <b>Staleness</b> ("how old is this reading?") also can't live on the watch — no spare holdable field — so it's an HA-dashboard tile instead.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="eyebrow">Your question</div>
+      <h2>Can a bar show a pushed variable?</h2>
+      <p class="lead">Yes. The <code>arc</code> widget renders a progress bar that fills proportional to its bound field — and the binding can be a <em>pushed</em> field, not just a sensor.</p>
+      <div class="callout">
+        <h3>Battery ring vs. pushed gauge — same widget, different source</h3>
+        <p>The green battery ring is an <code>arc</code> bound to <code>battery</code> (a sensor). Bind an <code>arc</code> to <code>day</code> instead and it becomes a <b>kW gauge</b> — it fills to <code>round(kW) / 31</code>, driven by the same push that sets the number. Toggle <b>kW bar</b> in the preview to see it: a red arc that tracks the pushed watts alongside the number.</p>
+      </div>
+      <p class="muted" style="font-size:13.5px">Because <code>day</code> tops out at 31, a raw <code>day</code>-bound arc maxes there; scale the visual fill in the renderer to your real ceiling (e.g. 12 kW) for a full sweep.</p>
+    </div>
+  </section>
+</main>
+
+<footer>Starmax GTX2 · face capability reference · built from the on-hardware binding map</footer>
+
+<script>
+  (function () {
+    "use strict";
+    var cv = document.querySelector("canvas.face");
+    var ctx = cv.getContext("2d");
+    var DPR = 2, S = 300; // logical size; canvas is 600 (2x)
+    var C = S; // center in device px (600/2)
+
+    var state = {
+      clock: true, kwnum: true, kwbar: false, battery: true, hr: true,
+      watts: 1150, batt: 71, bpm: 72, maxw: 12000
+    };
+
+    var css = getComputedStyle(document.documentElement);
+    var col = function (n) { return css.getPropertyValue(n).trim() || n; };
+
+    function face() {
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      // ground
+      ctx.fillStyle = "#05070a";
+      ctx.beginPath(); ctx.arc(C, C, C, 0, 7); ctx.fill();
+
+      var kw = Math.max(1, Math.round(state.watts / 1000));
+      var red = "#ff3b30", green = "#43d17a", white = "#eef3fa", dim = "#8b98a9";
+
+      // battery ring (outer arc, ~300deg)
+      if (state.battery) {
+        var r = C - 34;
+        ctx.lineWidth = 20; ctx.lineCap = "round";
+        ctx.strokeStyle = "rgba(255,255,255,.08)";
+        ctx.beginPath(); ctx.arc(C, C, r, Math.PI*0.75, Math.PI*0.75 + Math.PI*1.5); ctx.stroke();
+        ctx.strokeStyle = green;
+        ctx.beginPath(); ctx.arc(C, C, r, Math.PI*0.75, Math.PI*0.75 + Math.PI*1.5*(state.batt/100)); ctx.stroke();
+        ctx.fillStyle = dim; ctx.font = "600 30px " + col("--mono"); ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(state.batt + "%", C, C + r - 4);
+      }
+
+      // clock HH:MM
+      if (state.clock) {
+        var d = new Date();
+        var hh = String(d.getHours()).padStart(2,"0"), mm = String(d.getMinutes()).padStart(2,"0");
+        ctx.fillStyle = white; ctx.font = "700 92px " + col("--mono");
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(hh + ":" + mm, C, C - 96);
+      }
+
+      // kW bar (arc bound to day) — red gauge, inner
+      if (state.kwbar) {
+        var rb = C - 74;
+        var frac = Math.max(0, Math.min(1, state.watts / state.maxw));
+        ctx.lineWidth = 14; ctx.lineCap = "round";
+        ctx.strokeStyle = "rgba(255,59,48,.16)";
+        ctx.beginPath(); ctx.arc(C, C, rb, Math.PI*0.8, Math.PI*0.8 + Math.PI*1.4); ctx.stroke();
+        ctx.strokeStyle = red;
+        ctx.beginPath(); ctx.arc(C, C, rb, Math.PI*0.8, Math.PI*0.8 + Math.PI*1.4*frac); ctx.stroke();
+      }
+
+      // kW number (red hero, on day)
+      if (state.kwnum) {
+        ctx.fillStyle = red; ctx.font = "800 130px " + col("--mono");
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(String(kw), C, C + 18);
+        ctx.fillstyle = dim; ctx.fillStyle = dim; ctx.font = "600 30px " + col("--mono");
+        ctx.fillText("kW", C, C + 86);
+      }
+
+      // HR (small white, bottom, red heart)
+      if (state.hr) {
+        var y = C + C - 66;
+        ctx.font = "700 34px " + col("--mono"); ctx.textAlign = "left"; ctx.textBaseline = "middle";
+        var t = String(state.bpm), tw = ctx.measureText(t).width;
+        var hx = C - (tw + 34) / 2;
+        ctx.fillStyle = red; ctx.font = "700 30px " + col("--sans"); ctx.textAlign = "left";
+        ctx.fillText("♥", hx, y);
+        ctx.fillStyle = white; ctx.font = "700 34px " + col("--mono");
+        ctx.fillText(t, hx + 30, y);
+      }
+    }
+
+    // controls
+    var toggles = [
+      ["clock", "clock (h:m)", "--blue"],
+      ["kwnum", "kW number", "--red"],
+      ["kwbar", "kW bar (arc→day)", "--red"],
+      ["battery", "battery ring", "--green"],
+      ["hr", "heart rate", "--pink"]
+    ];
+    var tg = document.getElementById("toggles");
+    toggles.forEach(function (t) {
+      var id = t[0];
+      var lbl = document.createElement("label"); lbl.className = "toggle";
+      lbl.innerHTML = '<input type="checkbox" ' + (state[id] ? "checked" : "") +
+        '><span class="sw" style="background:var(' + t[2] + ')"></span>' + t[1];
+      lbl.querySelector("input").addEventListener("change", function (e) {
+        state[id] = e.target.checked; face();
+      });
+      tg.appendChild(lbl);
+    });
+
+    var sliders = [
+      ["watts", "grid watts", 0, 12000, 50, function (v) { return v + " W → " + Math.max(1, Math.round(v/1000)) + " kW"; }],
+      ["batt", "battery %", 0, 100, 1, function (v) { return v + "%"; }],
+      ["bpm", "heart rate", 40, 180, 1, function (v) { return v + " bpm"; }]
+    ];
+    var sc = document.getElementById("sliders");
+    sliders.forEach(function (s) {
+      var id = s[0];
+      var w = document.createElement("div"); w.className = "slider";
+      w.innerHTML = '<label><span>' + s[1] + '</span><b id="v_' + id + '">' + s[5](state[id]) + '</b></label>' +
+        '<input type="range" min="' + s[2] + '" max="' + s[3] + '" step="' + s[4] + '" value="' + state[id] + '">';
+      var out = w.querySelector("b"), inp = w.querySelector("input");
+      inp.addEventListener("input", function (e) {
+        state[id] = +e.target.value; out.textContent = s[5](state[id]); face();
+      });
+      sc.appendChild(w);
+    });
+
+    face();
+    setInterval(function () { if (state.clock) face(); }, 30000);
+  })();
+</script>
+</body>
+</html>
