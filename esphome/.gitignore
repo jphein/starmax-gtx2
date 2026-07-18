@@ -1,0 +1,4 @@
+# ESPHome build + secrets — never commit
+secrets.yaml
+.esphome/
+test/golden_vectors.h

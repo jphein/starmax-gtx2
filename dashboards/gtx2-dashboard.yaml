@@ -1,0 +1,886 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  Starmax GTX2 — CONTROL CENTER  ·  THREE WATCHES + MEDIA  ·  gtx2 integration
+# ═══════════════════════════════════════════════════════════════════════════
+#  RECOMMENDED build. Cards on this HA VM:
+#    · mushroom (registered) ✓
+#    · custom:gtx2-watch-card — served by the gtx2 integration at
+#      /gtx2-static/gtx2-watch-card.js (canonical source lives in the component at
+#      custom_components/gtx2/www/; no /config/www copy). rest BUILT-IN.
+#  Zero-install fallback: gtx2-dashboard-core.yaml.
+#
+#  ── ENTITY MODEL — all ids provided by the gtx2 integration ─────────────────
+#  Per watch <w> ∈ daily | spare | watch3:
+#      binary_sensor.gtx2_<w>_connected · binary_sensor.gtx2_<w>_present
+#      sensor.gtx2_<w>_heart_rate|_spo2|_steps|_distance|_calories
+#      sensor.gtx2_<w>_firmware|_active_face|_link_rssi|_room|_holder
+#  Hub: binary_sensor.gtx2_any_present · gtx2_bridge_online ·
+#       sensor.gtx2_detected_watches · gtx2_last_result
+#
+#  COMMANDS — `gtx2.*` services, each taking a `watch:` slug. The integration owns
+#  MAC lookup + node routing (holding node first) + MQTT host-bridge fallback, so
+#  the dashboard is PII-free (no MAC anywhere) and no wrapper scripts exist:
+#      gtx2.activate · gtx2.buzz · gtx2.sync_time · gtx2.read_health
+#      · gtx2.push_weather (weather.home) · gtx2.push_notification (title/body/footer)
+#  The custom card injects `watch:` in JS at click time (Lovelace tap_action data is
+#  NOT templated, so a plain button can't inject the slug for its own watch).
+#
+#  MEDIA (watch → HA): the watch's physical buttons drive a media_player; the
+#  find-phone tile rings your phone + speaks. Transport is exposed as no-arg
+#  services gtx2.media_play_pause · media_next · media_prev · find_my_phone. The
+#  media player + find-phone notify/speaker/TTS targets are configured in the GTX2
+#  integration OPTIONS (Settings → Devices & Services → GTX2 → Configure), not
+#  dashboard helpers.
+#  Notify compose: text.gtx2_notify_title · text.gtx2_notify_body.
+#
+#  NOT AVAILABLE (no card references them): battery (no GTX2 opcode), stress/HRV/
+#  sleep/workouts, any danger-tier command. Flashing is CLI-only.
+#  PALETTE ← site/index.html. Dark/light auto.
+# ═══════════════════════════════════════════════════════════════════════════
+
+title: GTX2
+views:
+
+  # ╔═══════════════════════════════════════════════════════════════════════╗
+  # ║  VIEW 1 · WATCHES — both watches, symmetric, all actions + media       ║
+  # ╚═══════════════════════════════════════════════════════════════════════╝
+  - title: Watches
+    path: gtx2
+    icon: mdi:watch-variant
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: GTX2 fleet
+            heading_style: title
+            icon: mdi:watch-variant
+            badges:
+              - type: entity
+                entity: sensor.gtx2_detected_watches
+                name: In range
+                icon: mdi:counter
+              - type: entity
+                entity: binary_sensor.gtx2_any_present
+                name: Present
+          - type: custom:mushroom-chips-card
+            alignment: center
+            chips:
+              - type: template
+                entity: binary_sensor.gtx2_bridge_online
+                icon: mdi:bridge
+                content: >-
+                  {{ 'bridge up' if is_state('binary_sensor.gtx2_bridge_online','on') else 'bridge down' }}
+                icon_color: >-
+                  {{ 'green' if is_state('binary_sensor.gtx2_bridge_online','on') else 'red' }}
+              # count-agnostic: counts every gtx2_*_connected that is on (scales to N watches)
+              - type: template
+                icon: mdi:bluetooth-connect
+                content: >-
+                  {{ states.binary_sensor | selectattr('entity_id','match','binary_sensor.gtx2_.*_connected') | selectattr('state','eq','on') | list | count }} linked
+                icon_color: blue
+              - type: template
+                entity: sensor.gtx2_last_result
+                icon: mdi:console
+                content: "{{ states('sensor.gtx2_last_result') }}"
+                icon_color: >-
+                  {% if 'ok' in states('sensor.gtx2_last_result') %}green{% elif 'ERR' in states('sensor.gtx2_last_result') %}red{% else %}grey{% endif %}
+
+      # ── LIVE GRID-kW → daily face (the daily's hero feature) ─────────────────
+      #   The daily renders live household draw as kW (red gauge-ring + number) by
+      #   rewriting the watch clock's `day` field via set_time_custom — no image
+      #   re-push. Staleness is HA-side ONLY: the just-proven field map (2026-07-16
+      #   digit test) shows the only holdable value fields are day/month (both used
+      #   by the readout); `week` is derived from the date and can't carry a value,
+      #   so there is no on-watch "last refreshed" carrier. This card is the answer.
+      - type: grid
+        cards:
+          - type: heading
+            heading: Live grid power → daily
+            heading_style: subtitle
+            icon: mdi:transmission-tower
+          - type: horizontal-stack
+            cards:
+              # current draw — big, colored by load band
+              - type: custom:mushroom-template-card
+                primary: >-
+                  {{ '%.1f' | format(states('sensor.total_grid_power') | float(0) / 1000) }} kW
+                secondary: "{{ states('sensor.total_grid_power') | int(0) }} W now"
+                icon: mdi:flash
+                icon_color: >-
+                  {% set w = states('sensor.total_grid_power') | float(0) %}
+                  {{ 'red' if w >= 6000 else ('orange' if w >= 3000 else 'green') }}
+                layout: vertical
+                tap_action: { action: more-info, entity: sensor.total_grid_power }
+              # last SUCCESSFUL refresh — the staleness tile (by request)
+              - type: custom:mushroom-template-card
+                primary: >-
+                  {% set ts = state_attr('input_datetime.gtx2_gridkw_last_push','timestamp') %}
+                  {% if not is_state('input_boolean.gtx2_gridkw_live','on') %}Paused
+                  {% elif is_state('binary_sensor.gtx2_daily_connected','off') %}Link down
+                  {% elif ts is none %}—
+                  {% else %}{% set a = now().timestamp() - ts %}{% if a < 60 %}{{ a | int }}s ago{% elif a < 3600 %}{{ (a / 60) | int }}m ago{% else %}{{ (a / 3600) | round(1) }}h ago{% endif %}{% endif %}
+                secondary: >-
+                  {% if not is_state('input_boolean.gtx2_gridkw_live','on') %}feed off — face frozen
+                  {% elif is_state('binary_sensor.gtx2_daily_connected','off') %}daily not linked
+                  {% else %}last kW refresh{% endif %}
+                icon: mdi:clock-check-outline
+                icon_color: >-
+                  {% set ts = state_attr('input_datetime.gtx2_gridkw_last_push','timestamp') %}
+                  {% if not is_state('input_boolean.gtx2_gridkw_live','on') %}disabled
+                  {% elif is_state('binary_sensor.gtx2_daily_connected','off') %}red
+                  {% elif ts is none %}disabled
+                  {% else %}{% set a = now().timestamp() - ts %}{{ 'green' if a < 360 else ('orange' if a < 600 else 'red') }}{% endif %}
+                layout: vertical
+                tap_action: { action: more-info, entity: input_datetime.gtx2_gridkw_last_push }
+          # drive/pause the feed
+          - type: custom:mushroom-template-card
+            entity: input_boolean.gtx2_gridkw_live
+            primary: Drive kW onto daily face
+            secondary: >-
+              {{ 'ON — feeding live (≥100 W move + every 5 min)' if is_state('input_boolean.gtx2_gridkw_live','on')
+                 else 'OFF — face frozen at last value' }}
+            icon: mdi:watch-import
+            icon_color: "{{ 'green' if is_state('input_boolean.gtx2_gridkw_live','on') else 'disabled' }}"
+            fill_container: true
+            tap_action: { action: toggle }
+          - type: markdown
+            content: >
+              **Live kW** shows as **"X.X kW"** on the daily — the integer rides the
+              watch clock's `day` field, the tenths ride `month`, no image re-push. The
+              driver rewrites both on any **≥100 W** change (5 s debounce) and at least
+              every **5 min**. **Last refresh** greens → **ambers past 6 min** → **reds
+              past 10 min** (feed stalled or link dropped). Staleness lives *here* — the
+              watch has no free field for it (`day` + `month` carry the readout; `week`
+              is firmware-derived from the date, digit-test-confirmed 2026-07-16).
+
+      # ── DAILY — live rings + full actions ──
+      - type: grid
+        cards:
+          - type: heading
+            heading: Daily watch
+            heading_style: subtitle
+            icon: mdi:watch
+          - type: custom:gtx2-watch-card
+            name: Daily GTX2
+            watch: daily
+            entities:
+              connected: binary_sensor.gtx2_daily_connected
+              present: binary_sensor.gtx2_daily_present
+              heart_rate: sensor.gtx2_daily_heart_rate
+              spo2: sensor.gtx2_daily_spo2
+              steps: sensor.gtx2_daily_steps
+              calories: sensor.gtx2_daily_calories
+              distance: sensor.gtx2_daily_distance
+              room: sensor.gtx2_daily_room
+              rssi: sensor.gtx2_daily_link_rssi
+              active_face: sensor.gtx2_daily_active_face
+            goals: { steps: 8000, calories: 600, distance: 6 }
+            # gtx2.* services route to the holding node, auto-fall-back to the host-bridge.
+            # The card injects watch: daily; the integration owns the MAC.
+            actions:
+              - { label: Activate, icon: "🤝", service: gtx2.activate }
+              - { label: Find, icon: "🔔", service: gtx2.buzz }
+              - { label: Notify, icon: "💬", service: gtx2.push_notification, kind: notify }
+              - { label: Set time, icon: "🕐", service: gtx2.sync_time }
+              - { label: Weather, icon: "⛅", service: gtx2.push_weather }
+              - { label: Read health, icon: "❤️", service: gtx2.read_health }
+
+      # ── SPARE — live rings + full actions ──
+      - type: grid
+        cards:
+          - type: heading
+            heading: Spare watch
+            heading_style: subtitle
+            icon: mdi:watch
+          - type: custom:gtx2-watch-card
+            name: Spare GTX2
+            watch: spare
+            entities:
+              connected: binary_sensor.gtx2_spare_connected
+              present: binary_sensor.gtx2_spare_present
+              heart_rate: sensor.gtx2_spare_heart_rate
+              spo2: sensor.gtx2_spare_spo2
+              steps: sensor.gtx2_spare_steps
+              calories: sensor.gtx2_spare_calories
+              distance: sensor.gtx2_spare_distance
+              room: sensor.gtx2_spare_room
+              rssi: sensor.gtx2_spare_link_rssi
+              active_face: sensor.gtx2_spare_active_face
+            goals: { steps: 8000, calories: 600, distance: 6 }
+            # gtx2.* services route to the holding node, auto-fall-back to the host-bridge.
+            # The card injects watch: spare; the integration owns the MAC.
+            actions:
+              - { label: Activate, icon: "🤝", service: gtx2.activate }
+              - { label: Find, icon: "🔔", service: gtx2.buzz }
+              - { label: Notify, icon: "💬", service: gtx2.push_notification, kind: notify }
+              - { label: Set time, icon: "🕐", service: gtx2.sync_time }
+              - { label: Weather, icon: "⛅", service: gtx2.push_weather }
+              - { label: Read health, icon: "❤️", service: gtx2.read_health }
+
+      # ── WATCH 3 — auto-appears once watch3 is configured with a MAC ──
+      #   slug `watch3` is the generic default; if JP renames it at provision
+      #   (guest/kid/…), swap watch3 → <name> here (one-token change). The section
+      #   is visibility-gated on the integration's connected entity, so it stays
+      #   hidden (no broken card) until watch3 is enabled in the integration options
+      #   (empty MAC ⇒ no gtx2_watch3_* entities ⇒ state unavailable ⇒ hidden).
+      - type: grid
+        visibility:
+          - condition: state
+            entity: binary_sensor.gtx2_watch3_connected
+            state_not: unavailable
+        cards:
+          - type: heading
+            heading: Watch 3
+            heading_style: subtitle
+            icon: mdi:watch
+          - type: custom:gtx2-watch-card
+            name: GTX2 Watch 3
+            watch: watch3
+            entities:
+              connected: binary_sensor.gtx2_watch3_connected
+              present: binary_sensor.gtx2_watch3_present
+              heart_rate: sensor.gtx2_watch3_heart_rate
+              spo2: sensor.gtx2_watch3_spo2
+              steps: sensor.gtx2_watch3_steps
+              calories: sensor.gtx2_watch3_calories
+              distance: sensor.gtx2_watch3_distance
+              room: sensor.gtx2_watch3_room
+              rssi: sensor.gtx2_watch3_link_rssi
+              active_face: sensor.gtx2_watch3_active_face
+            goals: { steps: 8000, calories: 600, distance: 6 }
+            actions:
+              - { label: Activate, icon: "🤝", service: gtx2.activate }
+              - { label: Find, icon: "🔔", service: gtx2.buzz }
+              - { label: Notify, icon: "💬", service: gtx2.push_notification, kind: notify }
+              - { label: Set time, icon: "🕐", service: gtx2.sync_time }
+              - { label: Weather, icon: "⛅", service: gtx2.push_weather }
+              - { label: Read health, icon: "❤️", service: gtx2.read_health }
+
+      # ── Notification composer (the text each watch's 💬 Notify pushes) ──
+      - type: grid
+        cards:
+          - type: heading
+            heading: Notification text
+            heading_style: subtitle
+            icon: mdi:message-badge-outline
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: text.gtx2_notify_title
+                name: Title
+              - entity: text.gtx2_notify_body
+                name: Body
+          - type: markdown
+            content: >
+              Type a title/body, then tap **💬 Notify** on a watch — the bridge
+              renders a minimal watch-face and pushes it to *that* watch (needs it
+              reachable by the host BLE; result → fleet chip / last result).
+
+      # ── Media & Find (watch → HA: the watch is the remote) ──
+      - type: grid
+        cards:
+          - type: heading
+            heading: Media & Find
+            heading_style: subtitle
+            icon: mdi:music-circle
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-template-card
+                primary: Prev
+                icon: mdi:skip-previous
+                icon_color: blue
+                tap_action: { action: perform-action, perform_action: gtx2.media_prev }
+              - type: custom:mushroom-template-card
+                primary: Play / Pause
+                icon: mdi:play-pause
+                icon_color: blue
+                tap_action: { action: perform-action, perform_action: gtx2.media_play_pause }
+              - type: custom:mushroom-template-card
+                primary: Next
+                icon: mdi:skip-next
+                icon_color: blue
+                tap_action: { action: perform-action, perform_action: gtx2.media_next }
+          - type: custom:mushroom-template-card
+            primary: Find my phone
+            secondary: Ring the phone + speak on the configured speaker
+            icon: mdi:cellphone-sound
+            icon_color: amber
+            fill_container: true
+            tap_action: { action: perform-action, perform_action: gtx2.find_my_phone }
+          - type: markdown
+            content: >
+              The watch's own buttons drive these too — this card mirrors them.
+              The **media player** and the **find-phone notify / speaker / TTS**
+              targets are configured in the **GTX2 integration options**
+              (Settings → Devices & Services → GTX2 → Configure), not dashboard
+              helpers.
+
+  # ╔═══════════════════════════════════════════════════════════════════════╗
+  # ║  VIEW 2 · HEALTH — both watches, symmetric live planes                 ║
+  # ╚═══════════════════════════════════════════════════════════════════════╝
+  - title: Health
+    path: health
+    icon: mdi:heart-pulse
+    type: sections
+    max_columns: 2
+    sections:
+
+      # ---- DAILY ----
+      - type: grid
+        cards:
+          - type: heading
+            heading: Daily — activity & cardio
+            heading_style: title
+            icon: mdi:run
+          - type: horizontal-stack
+            cards:
+              - type: gauge
+                entity: sensor.gtx2_daily_steps
+                name: Steps
+                min: 0
+                max: 8000
+                needle: true
+                severity: { red: 0, yellow: 3000, green: 6000 }
+              - type: gauge
+                entity: sensor.gtx2_daily_calories
+                name: Calories
+                unit: kcal
+                min: 0
+                max: 600
+                needle: true
+                severity: { red: 0, yellow: 250, green: 450 }
+          - type: horizontal-stack
+            cards:
+              - type: tile
+                entity: sensor.gtx2_daily_heart_rate
+                name: Heart rate
+                icon: mdi:heart-pulse
+                color: pink
+              - type: gauge
+                entity: sensor.gtx2_daily_spo2
+                name: SpO₂
+                unit: "%"
+                min: 85
+                max: 100
+                needle: true
+                severity: { red: 85, yellow: 90, green: 95 }
+          - type: entities
+            title: Daily — device
+            show_header_toggle: false
+            state_color: true
+            entities:
+              - entity: binary_sensor.gtx2_daily_connected
+                name: GATT link
+              - entity: sensor.gtx2_daily_distance
+                name: Distance
+              - entity: sensor.gtx2_daily_firmware
+                name: Firmware build
+              - entity: sensor.gtx2_daily_active_face
+                name: Active face
+              - entity: sensor.gtx2_daily_link_rssi
+                name: Link RSSI
+              - entity: sensor.gtx2_daily_room
+                name: Room
+
+      # ---- SPARE ----
+      - type: grid
+        cards:
+          - type: heading
+            heading: Spare — activity & cardio
+            heading_style: title
+            icon: mdi:run
+          - type: horizontal-stack
+            cards:
+              - type: gauge
+                entity: sensor.gtx2_spare_steps
+                name: Steps
+                min: 0
+                max: 8000
+                needle: true
+                severity: { red: 0, yellow: 3000, green: 6000 }
+              - type: gauge
+                entity: sensor.gtx2_spare_calories
+                name: Calories
+                unit: kcal
+                min: 0
+                max: 600
+                needle: true
+                severity: { red: 0, yellow: 250, green: 450 }
+          - type: horizontal-stack
+            cards:
+              - type: tile
+                entity: sensor.gtx2_spare_heart_rate
+                name: Heart rate
+                icon: mdi:heart-pulse
+                color: pink
+              - type: gauge
+                entity: sensor.gtx2_spare_spo2
+                name: SpO₂
+                unit: "%"
+                min: 85
+                max: 100
+                needle: true
+                severity: { red: 85, yellow: 90, green: 95 }
+          - type: entities
+            title: Spare — device
+            show_header_toggle: false
+            state_color: true
+            entities:
+              - entity: binary_sensor.gtx2_spare_connected
+                name: GATT link
+              - entity: sensor.gtx2_spare_distance
+                name: Distance
+              - entity: sensor.gtx2_spare_firmware
+                name: Firmware build
+              - entity: sensor.gtx2_spare_active_face
+                name: Active face
+              - entity: sensor.gtx2_spare_link_rssi
+                name: Link RSSI
+              - entity: sensor.gtx2_spare_room
+                name: Room
+
+      # ---- WATCH 3 (gated: appears once watch3 is configured in the integration) ----
+      - type: grid
+        visibility:
+          - condition: state
+            entity: binary_sensor.gtx2_watch3_connected
+            state_not: unavailable
+        cards:
+          - type: heading
+            heading: Watch 3 — activity & cardio
+            heading_style: title
+            icon: mdi:run
+          - type: horizontal-stack
+            cards:
+              - type: gauge
+                entity: sensor.gtx2_watch3_steps
+                name: Steps
+                min: 0
+                max: 8000
+                needle: true
+                severity: { red: 0, yellow: 3000, green: 6000 }
+              - type: gauge
+                entity: sensor.gtx2_watch3_calories
+                name: Calories
+                unit: kcal
+                min: 0
+                max: 600
+                needle: true
+                severity: { red: 0, yellow: 250, green: 450 }
+          - type: horizontal-stack
+            cards:
+              - type: tile
+                entity: sensor.gtx2_watch3_heart_rate
+                name: Heart rate
+                icon: mdi:heart-pulse
+                color: pink
+              - type: gauge
+                entity: sensor.gtx2_watch3_spo2
+                name: SpO₂
+                unit: "%"
+                min: 85
+                max: 100
+                needle: true
+                severity: { red: 85, yellow: 90, green: 95 }
+          - type: entities
+            title: Watch 3 — device
+            show_header_toggle: false
+            state_color: true
+            entities:
+              - entity: binary_sensor.gtx2_watch3_connected
+                name: GATT link
+              - entity: sensor.gtx2_watch3_distance
+                name: Distance
+              - entity: sensor.gtx2_watch3_firmware
+                name: Firmware build
+              - entity: sensor.gtx2_watch3_active_face
+                name: Active face
+              - entity: sensor.gtx2_watch3_link_rssi
+                name: Link RSSI
+              - entity: sensor.gtx2_watch3_room
+                name: Room
+
+      # ---- comparison ----
+      - type: grid
+        cards:
+          - type: heading
+            heading: Trends — the fleet (24 h)
+            heading_style: subtitle
+            icon: mdi:chart-line
+          # all three watches graphed; watch3's line is absent/flat until it's configured
+          # (history-graph tolerates a missing entity gracefully — no card error).
+          - type: history-graph
+            title: Heart rate
+            hours_to_show: 24
+            entities:
+              - entity: sensor.gtx2_daily_heart_rate
+                name: Daily HR
+              - entity: sensor.gtx2_spare_heart_rate
+                name: Spare HR
+              - entity: sensor.gtx2_watch3_heart_rate
+                name: Watch 3 HR
+          - type: history-graph
+            title: Steps
+            hours_to_show: 24
+            entities:
+              - entity: sensor.gtx2_daily_steps
+                name: Daily
+              - entity: sensor.gtx2_spare_steps
+                name: Spare
+              - entity: sensor.gtx2_watch3_steps
+                name: Watch 3
+          - type: markdown
+            content: >
+              Each plane populates once its watch's holding node reports; **watch 3**
+              appears when it's configured in the integration. Read *unavailable*
+              until then — nothing errors.
+
+  # ╔═══════════════════════════════════════════════════════════════════════╗
+  # ║  VIEW 3 · STATUS & MAINTENANCE                                         ║
+  # ╚═══════════════════════════════════════════════════════════════════════╝
+  - title: Status
+    path: status
+    icon: mdi:cog
+    type: sections
+    max_columns: 2
+    sections:
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Bridge & registry
+            heading_style: title
+            icon: mdi:bridge
+          - type: entities
+            show_header_toggle: false
+            state_color: true
+            entities:
+              - entity: binary_sensor.gtx2_bridge_online
+                name: Notification/command bridge (the host)
+              - entity: sensor.gtx2_detected_watches
+                name: Watches in BLE range
+              - entity: sensor.gtx2_last_result
+                name: Last command result
+
+      # ── Nodes (auto-adds any node the integration creates — ZERO dashboard edits) ──
+      #    auto-entities matches every binary_sensor.gtx2_node_*_online the hub exposes,
+      #    so a node added in the integration options appears here with no YAML change.
+      - type: grid
+        cards:
+          - type: heading
+            heading: Nodes
+            heading_style: subtitle
+            icon: mdi:access-point-network
+          - type: custom:auto-entities
+            card:
+              type: grid
+              columns: 2
+              square: false
+            card_param: cards
+            filter:
+              include:
+                - entity_id: "binary_sensor.gtx2_node_*_online"
+                  options:
+                    type: custom:mushroom-template-card
+                    entity: this.entity_id
+                    icon: mdi:access-point
+                    icon_color: "{{ 'green' if is_state('this.entity_id', 'on') else 'disabled' }}"
+                    primary: "{{ state_attr('this.entity_id', 'friendly_name') or 'this.entity_id' }}"
+                    secondary: "{{ state_attr('this.entity_id', 'room') or '—' }} · holds {{ state_attr('this.entity_id', 'holding') or 'none' }}"
+                    tap_action:
+                      action: more-info
+            sort:
+              method: friendly_name
+          - type: markdown
+            content: >
+              Every BLE-proxy node the integration knows about (from its options)
+              appears here automatically — online state, room, and which watch it's
+              currently **holding**. New nodes show up with *no dashboard edits*.
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Presence & lights
+            heading_style: subtitle
+            icon: mdi:map-marker-radius
+          - type: glance
+            columns: 2
+            state_color: true
+            entities:
+              - entity: sensor.gtx2_daily_room
+                name: Daily room
+              - entity: sensor.gtx2_spare_room
+                name: Spare room
+              - entity: sensor.gtx2_watch3_room
+                name: Watch 3 room
+              - entity: binary_sensor.gtx2_daily_present
+                name: Daily
+              - entity: binary_sensor.gtx2_spare_present
+                name: Spare
+              - entity: binary_sensor.gtx2_watch3_present
+                name: Watch 3
+          # follow-me kill switch: toggling the automation off stops lights reacting to presence
+          # (presence sensors keep tracking). Native automation enable/disable — persists restarts.
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: automation.gtx2_presence_union_follow_me_room_lights_either_watch
+                name: Follow-me lights
+                icon: mdi:lightbulb-auto
+          - type: markdown
+            content: >
+              Room presence is per-watch; **follow-me lights** turn a room's
+              `gtx2_lights`-labelled entities on if **either** watch is in it, off
+              when neither is (union automation). Flip **Follow-me lights** off to
+              stop lights reacting — presence tracking itself keeps running.
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Safety
+            heading_style: subtitle
+            icon: mdi:shield-check
+          - type: markdown
+            content: >
+              ## 🛡️ Safe surface only
+
+
+              Every exposed command is GREEN/`[CAP]`-verified. The danger tier
+              (flash · dnd · music · camera · call) is **not deployed** — nothing
+              to arm. **Firmware flashing is CLI-only.**
+
+
+      # ── CFW flash handoff: burst-release the SPARE so the flasher can grab it ──
+      #    (script.gtx2_spare_free_for_flash — gtx2_spare_flash.yaml package)
+      #    KEPT VERBATIM / NOT rebound: gtx2_spare_flash.yaml is OUT OF SCOPE for this
+      #    migration (CFW/flash lane) and SURVIVES retirement — these two scripts + the
+      #    flash-window helper stay live. The contract test allowlists them (PROTECTED_REFS).
+      - type: grid
+        cards:
+          - type: heading
+            heading: CFW flash handoff
+            heading_style: subtitle
+            icon: mdi:flash
+          - type: markdown
+            content: >
+              Free the **spare** watch's BLE so the CFW flasher can grab it. The
+              office node re-grabs within ~1-2 s, so this fires a burst of
+              disconnects (every 2 s for ~60 s). Press once the flasher is primed;
+              press **Stop** to end early. (If the race is still lost, the robust
+              fix is reflashing the office node with its spare ble_client off.)
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-template-card
+                primary: Free spare for flashing
+                secondary: >-
+                  {{ 'window ACTIVE' if is_state('input_boolean.gtx2_spare_flash_window','on') else 'burst · ~60s' }}
+                icon: mdi:lan-disconnect
+                icon_color: >-
+                  {{ 'red' if is_state('input_boolean.gtx2_spare_flash_window','on') else 'orange' }}
+                fill_container: true
+                tap_action:
+                  action: perform-action
+                  perform_action: script.gtx2_spare_free_for_flash
+              - type: custom:mushroom-template-card
+                primary: Stop
+                secondary: end window
+                icon: mdi:stop-circle-outline
+                icon_color: grey
+                fill_container: true
+                tap_action:
+                  action: perform-action
+                  perform_action: script.gtx2_spare_free_for_flash_stop
+
+  # ╔═══════════════════════════════════════════════════════════════════════╗
+  # ║  VIEW 4 · PUSH — "what can we push to the watch" controls (#26 fields)  ║
+  # ╚═══════════════════════════════════════════════════════════════════════╝
+  #  Backed by the gtx2 integration's push-view hub entities (select/text/time/
+  #  number/switch) + the gtx2.* dispatch services. The _send buttons call
+  #  gtx2.push_text / push_text_label / set_alarm / switch_dial with NO watch field
+  #  — the handlers default the watch from select.gtx2_push_target.
+  - title: Push
+    path: push
+    icon: mdi:watch-import
+    type: sections
+    max_columns: 2
+    sections:
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: GTX2 Push
+            heading_style: title
+            icon: mdi:watch-import
+          - type: custom:mushroom-select-card
+            entity: select.gtx2_push_target
+            primary_info: name
+            icon: mdi:watch
+          - type: markdown
+            content: >
+              Experimental "what can we push to the watch" controls. Pick the
+              **target** watch above; each control below sends to it via the
+              integration's `gtx2.*` services.
+
+      # ── Text to wrist (weather CITY field — the LE-legal free-text channel) ──
+      - type: grid
+        cards:
+          - type: heading
+            heading: Text to wrist
+            heading_style: subtitle
+            icon: mdi:message-text
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: text.gtx2_push_text
+                name: Message (short)
+          - type: horizontal-stack
+            cards:
+              - type: custom:mushroom-template-card
+                primary: Send · city
+                secondary: glanceable · instant
+                icon: mdi:message-badge-outline
+                icon_color: blue
+                fill_container: true
+                tap_action:
+                  action: perform-action
+                  perform_action: gtx2.push_text_label
+              - type: custom:mushroom-template-card
+                primary: Send · rendered
+                secondary: own face · ~10-13s
+                icon: mdi:message-arrow-right-outline
+                icon_color: indigo
+                fill_container: true
+                tap_action:
+                  action: perform-action
+                  perform_action: gtx2.push_text
+          - type: markdown
+            content: >
+              Two ways to put text on **{{ states('select.gtx2_push_target') }}** (#28):
+              **city** rides the weather city field (cheap, instant — up to **32
+              chars**; ~18 visible at a glance, longer scrolls in the weather app);
+              **rendered** makes text its own watch face (arbitrary text, ~10–13 s,
+              replaces the active face, no auto-revert). Each **no-ops gracefully**
+              until controlnode lands its node wrapper (city fast-follow post
+              weather-calibration; rendered via the #27 blob path).
+
+      # ── Alarm ──
+      - type: grid
+        cards:
+          - type: heading
+            heading: Alarm
+            heading_style: subtitle
+            icon: mdi:alarm
+          - type: entities
+            show_header_toggle: false
+            state_color: true
+            entities:
+              - entity: time.gtx2_alarm_time
+                name: Time
+              - entity: number.gtx2_alarm_index
+                name: Slot (0–2)
+              - entity: switch.gtx2_alarm_enabled
+                name: Enabled
+          - type: custom:mushroom-template-card
+            primary: Set alarm
+            secondary: >-
+              slot {{ states('number.gtx2_alarm_index') | int(0) }} ·
+              {{ states('time.gtx2_alarm_time') }} ·
+              {{ 'on' if is_state('switch.gtx2_alarm_enabled','on') else 'off' }} →
+              {{ states('select.gtx2_push_target') }}
+            icon: mdi:alarm-plus
+            icon_color: teal
+            fill_container: true
+            tap_action:
+              action: perform-action
+              perform_action: gtx2.set_alarm
+          - type: markdown
+            content: >
+              **One-shot only** (v1) — no day-of-week repeat yet (the weekday
+              byte-order isn't pinned). Slots **0–1 are capture-proven**; higher
+              slots are best-effort.
+
+      # ── Watch face (dial switch — [INFERRED], best-effort) ──
+      - type: grid
+        cards:
+          - type: heading
+            heading: Watch face
+            heading_style: subtitle
+            icon: mdi:watch
+          - type: custom:mushroom-select-card
+            entity: select.gtx2_dial
+            primary_info: name
+            icon: mdi:watch
+          - type: custom:mushroom-template-card
+            primary: Switch face
+            secondary: "{{ states('select.gtx2_dial') }} → {{ states('select.gtx2_push_target') }}"
+            icon: mdi:watch-import
+            icon_color: purple
+            fill_container: true
+            tap_action:
+              action: perform-action
+              perform_action: gtx2.switch_dial
+          - type: markdown
+            content: >
+              **Experimental** — switches to an installed face via an *inferred,
+              uncaptured* opcode; it may no-op. The reliable way to activate a
+              face is to **re-push (install)** it. Only the two custom faces we
+              control are listed (25022/25023); enumerating the watch's built-in
+              faces needs a dial-list read (a later feature).
+
+      # ── Grid watts (HA-side readout; feeds controlnode's watch-face render) ──
+      - type: grid
+        cards:
+          - type: heading
+            heading: Grid watts
+            heading_style: subtitle
+            icon: mdi:transmission-tower
+          - type: tile
+            entity: sensor.total_grid_power
+            name: Grid power
+            icon: mdi:transmission-tower
+            color: orange
+          - type: glance
+            columns: 2
+            entities:
+              - entity: sensor.l1_power_clamp
+                name: L1
+              - entity: sensor.l2_power_clamp
+                name: L2
+          - type: markdown
+            content: >
+              Live household grid draw (PJ2101A L1+L2). This is the HA-side
+              readout; the **watch-face render** of grid-watts is controlnode's
+              pipeline (off-node render → node D-plane push), not built here.
+
+      # ── Screen Break (#29) — per-watch 5-min break timer ──
+      - type: grid
+        cards:
+          - type: heading
+            heading: Screen Break
+            heading_style: subtitle
+            icon: mdi:timer-pause-outline
+          - type: entities
+            show_header_toggle: false
+            state_color: true
+            entities:
+              - entity: switch.gtx2_daily_screen_break
+                name: Daily
+              - entity: switch.gtx2_spare_screen_break
+                name: Spare
+          # watch3 toggle gated like its hero — appears once watch3 is configured in the integration
+          - type: entities
+            show_header_toggle: false
+            state_color: true
+            visibility:
+              - condition: state
+                entity: binary_sensor.gtx2_watch3_connected
+                state_not: unavailable
+            entities:
+              - entity: switch.gtx2_watch3_screen_break
+                name: Watch 3
+          - type: markdown
+            content: >
+              5-min break: the watch chimes, shows a **SCREEN BREAK** face + a live
+              countdown, chimes again, then restores the weather face. Toggle **on**
+              to start on that watch; **off** mid-break to cancel (auto-off at the end).

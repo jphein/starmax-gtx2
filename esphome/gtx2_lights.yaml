@@ -1,0 +1,74 @@
+# gtx2_lights.yaml — GTX2 watch inputs -> the watch's room lights (a drop-in sibling of
+# ha/packages/itag_lights.yaml). Deploy to /homeassistant/packages/ on the HA VM (see
+# ~/Projects/ha/CLAUDE.md for the ssh + check_config workflow; NOT auto-deployed).
+#
+# The gtx2-node fires `esphome.gtx2_input {input, detail, node}` whenever the watch pushes an LE
+# input (music play/pause/prev/next, find-phone). Because only the node holding the GATT link
+# hears the input, `node` IS the room — so we act on `area_id(device_id(node))`'s lights, exactly
+# like the iTag button. Which entities count as "the room's lights" is curated with a **gtx2_lights**
+# label (mirrors button_lights) — label an entity to opt it in.
+#
+# Mapping (music transport buttons on the watch double as a room dimmer, itag-style):
+#   music.play_pause  -> toggle the room's lights   (the "button press")
+#   music.next        -> brightness up  (+15%)
+#   music.prev        -> brightness down (-15%)
+#   find_phone        -> fire `gtx2_find_phone` (wire your own ringer/scene) — no light action
+#   records_ready     -> no light action (event only; bind your own health-sync automation)
+#
+# NOTE (presence): continuous room presence is owned by the HA-side passive-RSSI computation
+# (the ha-bridge presence package, sensor.gtx2_room). This package deliberately does NOT publish a
+# room — it only routes CONTROL to the connected node's area, the same as itag_lights.yaml.
+automation:
+  - id: gtx2_input_room_lights
+    alias: "GTX2 input: control the watch's room lights"
+    mode: queued
+    max_exceeded: silent
+    triggers:
+      - trigger: event
+        event_type: esphome.gtx2_input
+    actions:
+      - variables:
+          node: "{{ trigger.event.data.node }}"
+          input: "{{ trigger.event.data.input }}"
+          node_dev: "{{ device_id(node) }}"
+          room: "{{ area_id(node_dev) if node_dev else none }}"
+          lights: >-
+            {{ area_entities(room) | select('in', label_entities('gtx2_lights')) | list
+               if room not in [none, ''] else [] }}
+      - condition: template
+        value_template: "{{ room not in [none, ''] and lights | count > 0 }}"
+      - choose:
+          - conditions: "{{ input == 'music.play_pause' }}"
+            sequence:
+              - action: homeassistant.toggle
+                target: { entity_id: "{{ lights }}" }
+          - conditions: "{{ input == 'music.next' }}"
+            sequence:
+              - action: light.turn_on
+                target: { entity_id: "{{ lights }}" }
+                data:
+                  brightness_step_pct: 15
+                  transition: 0.3
+          - conditions: "{{ input == 'music.prev' }}"
+            sequence:
+              - action: light.turn_on
+                target: { entity_id: "{{ lights }}" }
+                data:
+                  brightness_step_pct: -15
+                  transition: 0.3
+
+  # find-phone: the watch's "find my phone" tile. Wire this to whatever rings your phone / runs a
+  # locate scene. Inert until you fill in the sequence.
+  - id: gtx2_find_phone
+    alias: "GTX2: find-phone tapped on the watch"
+    mode: single
+    triggers:
+      - trigger: event
+        event_type: esphome.gtx2_input
+        event_data:
+          input: find_phone
+    actions:
+      - variables:
+          node: "{{ trigger.event.data.node }}"
+      # e.g. notify.mobile_app_* / a media_player chime / a scene. Left empty on purpose.
+      - stop: "no-op until configured"

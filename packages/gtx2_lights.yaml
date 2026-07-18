@@ -1,0 +1,67 @@
+# GTX2 follow-me room lights — the ONLY piece of the retired gtx2_presence.yaml that stays YAML.
+#
+# When the presence/aggregation layer moved into the `gtx2` custom component, this area/label
+# taste automation stayed behind (it is user- and area-specific, not core watch logic). It is a
+# VERBATIM lift of the `gtx2_presence_lights_union` automation from the deployed
+# an internal presence package — nothing changed: it still triggers on
+# the same `sensor.gtx2_<watch>_room` ids, which the integration now provides under identical
+# entity_ids, so it drops in with zero rebinding.
+#
+# Requires the `gtx2_lights` label applied (in the UI) to whichever light/switch entities in each
+# area should follow the watches. Only labeled entities are ever touched.
+#
+# ==================================================== union follow-me lights
+# Unchanged in intent from the previous package: a room's gtx2_lights turn ON if
+# EITHER watch is in it, OFF only when NEITHER is. Now driven by the new
+# connected-node room sensors.
+automation:
+  - id: gtx2_presence_lights_union
+    alias: "GTX2 presence: union follow-me room lights (either watch)"
+    mode: queued
+    max_exceeded: silent
+    triggers:
+      - trigger: state
+        entity_id:
+          - sensor.gtx2_daily_room
+          - sensor.gtx2_spare_room
+          - sensor.gtx2_watch3_room
+    conditions:
+      - condition: template
+        value_template: "{{ trigger.to_state.state not in ['unknown', 'unavailable', none] }}"
+    actions:
+      - variables:
+          area_map:
+            "Office / Laundry": laundry
+            "Kitchen": kitchen
+            "Bedroom": bedroom
+            "Garage": garage
+            "Studio": studio
+      - variables:
+          occupied_areas: >-
+            {%- set out = namespace(l=[]) -%}
+            {%- for r in [states('sensor.gtx2_daily_room'), states('sensor.gtx2_spare_room'), states('sensor.gtx2_watch3_room')] -%}
+              {%- if r in area_map -%}{%- set out.l = out.l + [area_map[r]] -%}{%- endif -%}
+            {%- endfor -%}
+            {{ out.l | unique | list }}
+      - variables:
+          all_lights: "{{ label_entities('gtx2_lights') }}"
+          on_lights: >-
+            {%- set out = namespace(l=[]) -%}
+            {%- for a in occupied_areas -%}
+              {%- set out.l = out.l + (area_entities(a) | select('in', label_entities('gtx2_lights')) | list) -%}
+            {%- endfor -%}
+            {{ out.l | unique | list }}
+      - variables:
+          off_lights: "{{ all_lights | reject('in', on_lights) | list }}"
+      - if: "{{ on_lights | count > 0 }}"
+        then:
+          - action: homeassistant.turn_on
+            continue_on_error: true
+            target:
+              entity_id: "{{ on_lights }}"
+      - if: "{{ off_lights | count > 0 }}"
+        then:
+          - action: homeassistant.turn_off
+            continue_on_error: true
+            target:
+              entity_id: "{{ off_lights }}"

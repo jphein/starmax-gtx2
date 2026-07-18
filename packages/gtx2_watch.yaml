@@ -1,0 +1,280 @@
+# =============================================================================
+# GTX2 smartwatch <-> Home Assistant, via the gtx2-bridge MQTT gateway.
+#
+# Transport: MQTT (HA-native). The bridge (a Python service on a BLE host — see bridge/README /
+# the repo README) subscribes to `gtx2/cmd` and publishes the watch registry + per-watch
+# state/health back.
+#
+# Deploy: copy this file into your Home Assistant `packages/` directory (enable `packages:` under
+# `homeassistant:` in configuration.yaml), then check the config and reload. Adapt entity ids to
+# your setup.
+#
+# SAFETY: the tappable scripts below are the SAFE ([CAP] + 🟡) command set only. DANGER commands
+# (flash-firmware, dnd, music, camera, call) are reachable ONLY via `script.gtx2_danger_send`,
+# which requires `input_boolean.gtx2_arm_danger` to be ON and sends confirm:true. Never put a
+# firmware-flash on a one-tap dashboard button.
+#
+# CONFIGURE: set `input_text.gtx2_target_mac` to your watch's MAC (or pass `mac` per call), and
+# edit `weather_entity` in the sync automation. Per-watch sensors below use a PRIMARY_SLUG
+# placeholder — replace it with your watch's MAC slug (lowercase, no colons), or let the bridge's
+# MQTT discovery create them (roadmap; see README).
+# =============================================================================
+
+# ------------------------------------------------------------------ helpers (target + inputs)
+input_text:
+  gtx2_target_mac:
+    name: "GTX2 target MAC"
+    icon: mdi:watch
+    initial: "AA:BB:CC:DD:EE:FF"          # synthetic placeholder — replace with your watch MAC
+    max: 20
+  gtx2_notification_title:
+    name: "GTX2 notification title"
+    icon: mdi:message-text
+    max: 40
+  gtx2_notification_body:
+    name: "GTX2 notification body"
+    icon: mdi:message-text-outline
+    max: 120
+
+input_boolean:
+  gtx2_arm_danger:
+    name: "GTX2 arm DANGER commands"
+    icon: mdi:alert
+
+# ------------------------------------------------------------------ MQTT entities (bridge -> HA)
+mqtt:
+  binary_sensor:
+    - name: "GTX2 bridge online"
+      unique_id: gtx2_bridge_online
+      state_topic: "gtx2/bridge/availability"
+      payload_on: "online"
+      payload_off: "offline"
+      device_class: connectivity
+      icon: mdi:bridge
+
+  sensor:
+    # Registry — the "all detected watches" list. State = count; the full list is an attribute
+    # the dashboard renders (per-watch cards) from `watches`.
+    - name: "GTX2 detected watches"
+      unique_id: gtx2_registry
+      state_topic: "gtx2/registry"
+      value_template: "{{ value_json.count }}"
+      json_attributes_topic: "gtx2/registry"
+      icon: mdi:watch-vibrate
+
+    # Last command result (ok / error / summary) — a bridge health/debug readout.
+    - name: "GTX2 last result"
+      unique_id: gtx2_last_result
+      state_topic: "gtx2/result"
+      value_template: >-
+        {{ value_json.command ~ ': ' ~ ('ok' if value_json.ok else ('ERR ' ~ (value_json.error | default('')))) }}
+      json_attributes_topic: "gtx2/result"
+      icon: mdi:console
+
+    # ---- Primary-watch health sensors. Replace PRIMARY_SLUG with your watch's MAC slug. ----
+    - name: "GTX2 heart rate"
+      unique_id: gtx2_primary_heart_rate
+      state_topic: "gtx2/PRIMARY_SLUG/health"
+      value_template: "{{ value_json.heart_rate | default(none) }}"
+      unit_of_measurement: "bpm"
+      state_class: measurement
+      icon: mdi:heart-pulse
+    - name: "GTX2 SpO2"
+      unique_id: gtx2_primary_spo2
+      state_topic: "gtx2/PRIMARY_SLUG/health"
+      value_template: "{{ value_json.spo2 | default(none) }}"
+      unit_of_measurement: "%"
+      state_class: measurement
+      icon: mdi:water-percent
+    - name: "GTX2 steps"
+      unique_id: gtx2_primary_steps
+      state_topic: "gtx2/PRIMARY_SLUG/health"
+      value_template: "{{ value_json.steps | default(none) }}"
+      unit_of_measurement: "steps"
+      state_class: total_increasing
+      icon: mdi:shoe-print
+    - name: "GTX2 distance"
+      unique_id: gtx2_primary_distance
+      state_topic: "gtx2/PRIMARY_SLUG/health"
+      value_template: "{{ value_json.distance_m | default(none) }}"
+      unit_of_measurement: "m"
+      device_class: distance
+      state_class: total_increasing
+    - name: "GTX2 calories"
+      unique_id: gtx2_primary_calories
+      state_topic: "gtx2/PRIMARY_SLUG/health"
+      value_template: "{{ value_json.calories | default(none) }}"
+      unit_of_measurement: "kcal"
+      state_class: total_increasing
+      icon: mdi:fire
+    - name: "GTX2 sleep"
+      unique_id: gtx2_primary_sleep
+      state_topic: "gtx2/PRIMARY_SLUG/health"
+      value_template: "{{ value_json.sleep_minutes | default(none) }}"
+      unit_of_measurement: "min"
+      device_class: duration
+      icon: mdi:sleep
+    - name: "GTX2 last workout"
+      unique_id: gtx2_primary_workout
+      state_topic: "gtx2/PRIMARY_SLUG/health"
+      value_template: "{{ value_json.workout_summary | default('none') }}"
+      icon: mdi:run
+    # ---- Primary-watch state ----
+    - name: "GTX2 firmware"
+      unique_id: gtx2_primary_firmware
+      state_topic: "gtx2/PRIMARY_SLUG/state"
+      value_template: "{{ value_json.firmware | default('unknown') }}"
+      icon: mdi:chip
+    - name: "GTX2 active face"
+      unique_id: gtx2_primary_active_dial
+      state_topic: "gtx2/PRIMARY_SLUG/state"
+      value_template: "{{ value_json.active_dial | default('unknown') }}"
+      icon: mdi:watch
+
+# ------------------------------------------------------------------ SAFE command scripts (tappable)
+script:
+  # --- headline: buzz / find ---
+  gtx2_find:
+    alias: "GTX2: buzz / find watch"
+    icon: mdi:bell-ring
+    fields:
+      mac: {description: "target MAC (default: input_text.gtx2_target_mac)"}
+      duration: {description: "buzz seconds", example: 5}
+    sequence:
+      - action: mqtt.publish
+        data:
+          topic: "gtx2/cmd"
+          payload: >-
+            {{ {"command": "find",
+                "mac": mac | default(states('input_text.gtx2_target_mac'), true),
+                "params": {"duration": duration | default(5)}} | to_json }}
+
+  # --- headline: push a notification watch-face ---
+  gtx2_notify:
+    alias: "GTX2: push notification"
+    icon: mdi:message-badge
+    fields:
+      mac: {description: "target MAC"}
+      title: {description: "headline", example: "Front Door"}
+      body: {description: "message", example: "Motion detected"}
+      footer: {description: "small bottom line", example: "14:32"}
+    sequence:
+      - action: mqtt.publish
+        data:
+          topic: "gtx2/cmd"
+          payload: >-
+            {{ {"command": "notify",
+                "mac": mac | default(states('input_text.gtx2_target_mac'), true),
+                "params": {"title": title | default(states('input_text.gtx2_notification_title')),
+                           "body":  body  | default(states('input_text.gtx2_notification_body')),
+                           "footer": footer | default(now().strftime('%H:%M'))}} | to_json }}
+
+  # --- headline: sync the clock ---
+  gtx2_set_time:
+    alias: "GTX2: sync time"
+    icon: mdi:clock-check
+    fields:
+      mac: {description: "target MAC"}
+    sequence:
+      - action: mqtt.publish
+        data:
+          topic: "gtx2/cmd"
+          payload: >-
+            {{ {"command": "set-time",
+                "mac": mac | default(states('input_text.gtx2_target_mac'), true)} | to_json }}
+
+  # --- read health/state (populates the sensors above) ---
+  gtx2_sync_health:
+    alias: "GTX2: sync health + state"
+    icon: mdi:heart-plus
+    fields:
+      mac: {description: "target MAC"}
+    sequence:
+      - action: mqtt.publish
+        data:
+          topic: "gtx2/cmd"
+          payload: >-
+            {{ {"command": "sync-health",
+                "mac": mac | default(states('input_text.gtx2_target_mac'), true)} | to_json }}
+
+  # --- take a fresh watch off its pairing screen ---
+  gtx2_activate:
+    alias: "GTX2: activate (pairing handshake)"
+    icon: mdi:handshake
+    fields:
+      mac: {description: "target MAC"}
+    sequence:
+      - action: mqtt.publish
+        data:
+          topic: "gtx2/cmd"
+          payload: >-
+            {{ {"command": "activate",
+                "mac": mac | default(states('input_text.gtx2_target_mac'), true)} | to_json }}
+
+  # --- read the installed dial list + active face ---
+  gtx2_dial_list:
+    alias: "GTX2: list dials"
+    icon: mdi:format-list-bulleted
+    fields:
+      mac: {description: "target MAC"}
+    sequence:
+      - action: mqtt.publish
+        data:
+          topic: "gtx2/cmd"
+          payload: >-
+            {{ {"command": "dial-list",
+                "mac": mac | default(states('input_text.gtx2_target_mac'), true)} | to_json }}
+
+  # --- GENERIC: reach ANY SAFE command in the catalog (green + yellow) ---
+  # For the long tail (dial-switch, aod, world-clock, alarm-set, user-profile, …). See the bridge
+  # manifest (`gtx2-bridge manifest`) for command names + params. Danger commands are refused here.
+  gtx2_send:
+    alias: "GTX2: send catalog command (safe)"
+    icon: mdi:send
+    fields:
+      command: {description: "catalog command name", example: "dial-switch"}
+      mac: {description: "target MAC"}
+      params: {description: "params object", example: '{"dial_id": 25001}'}
+    sequence:
+      - action: mqtt.publish
+        data:
+          topic: "gtx2/cmd"
+          payload: >-
+            {{ {"command": command,
+                "mac": mac | default(states('input_text.gtx2_target_mac'), true),
+                "params": params | default({})} | to_json }}
+
+  # --- DANGER: gated. Requires input_boolean.gtx2_arm_danger ON; sends confirm:true. ---
+  # NOT wired to any dashboard button/automation. flash-firmware/dnd/music/camera/call only.
+  gtx2_danger_send:
+    alias: "GTX2: DANGER command (armed + confirmed)"
+    icon: mdi:alert-octagon
+    mode: single
+    fields:
+      command: {description: "DANGER command name", example: "flash-firmware"}
+      mac: {description: "target MAC"}
+      params: {description: "params object", example: '{"file": "/data/fw.ota"}'}
+    sequence:
+      - condition: state
+        entity_id: input_boolean.gtx2_arm_danger
+        state: "on"
+      - action: mqtt.publish
+        data:
+          topic: "gtx2/cmd"
+          payload: >-
+            {{ {"command": command,
+                "mac": mac | default(states('input_text.gtx2_target_mac'), true),
+                "params": params | default({}),
+                "confirm": true} | to_json }}
+      - action: input_boolean.turn_off          # auto-disarm after one use
+        target:
+          entity_id: input_boolean.gtx2_arm_danger
+
+# ------------------------------------------------------------------ periodic time + weather sync
+# REMOVED (#21 behavioural cutover): the bridge's `gtx2_time_weather_sync` automation used to push
+# set-time + weather to `gtx2/cmd` (host-bridge) every 30 min. Per the node migration that role
+# moved to the node-first per-watch wrappers: periodic sync now runs via `gtx2_periodic_sync.yaml`
+# (routing lane), which calls `script.gtx2_{daily,spare}_sync_time` + `_push_weather` — routed to
+# the node holding each watch, with the host-bridge as the labeled last-resort (the wrappers'
+# `fb_script`). Keeping this automation too would DOUBLE-SEND. The host-bridge still executes
+# set-time/weather on demand as that fallback; it just no longer drives the periodic cadence.

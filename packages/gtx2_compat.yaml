@@ -1,0 +1,22 @@
+# GTX2 migration COMPAT SHIM
+#
+# COMPAT SHIM — gtx2_spare_flash.yaml (CFW flash lane, line 47) calls this retired command_routing
+# wrapper; retire this shim when that lane migrates to gtx2.release_link directly (tracked internally).
+#
+# Background (BREAK-1, somnia consumer sweep): gtx2_command_routing.yaml — which provided
+# `script.gtx2_spare_release_link` — is retired in this migration. But the OUT-OF-SCOPE
+# `gtx2_spare_flash.yaml` package (CFW flash lane, deployed 2026-07-15 18:39, survives retirement)
+# still calls that exact script to burst-release the spare watch's BLE link so the flasher can grab
+# it. Dropping the wrapper would break the flash burst-release. We do NOT edit their file (lane
+# discipline); instead this one-line shim keeps the identical entity_id alive, routed to the new
+# `gtx2.release_link` service. Both live nodes expose esphome.gtx2_{bedroom,office}_spare_release_link,
+# so the service routes node-first correctly.
+script:
+  gtx2_spare_release_link:
+    alias: "GTX2 spare — release link (compat shim → gtx2.release_link)"
+    icon: mdi:bluetooth-off
+    mode: single
+    sequence:
+      - action: gtx2.release_link
+        data:
+          watch: spare

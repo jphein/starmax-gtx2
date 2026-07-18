@@ -1,0 +1,199 @@
+# gtx2-node.yaml — a "super-iTag" ESP32-C3 node for a GTX2 watch (docs/cfw-crown-ha.md).
+#
+# The node holds the GATT link to the watch and speaks our 0x0FF0 / C1 protocol via the
+# `gtx2_client` external component. The node that holds the link IS the room (identical to the
+# iTag nodes), so `esphome.gtx2_input {input, node}` events drop straight into itag_lights.yaml's
+# room->action pattern (see gtx2_lights.yaml here). Deploy alongside a dedicated ble-proxy node;
+# don't co-locate proxy + GATT duty on one radio (radio contention — cfw-crown-ha.md §3).
+esphome:
+  name: gtx2-node
+  friendly_name: gtx2-node
+  platformio_options:
+    board_build.mcu: esp32c3
+    board_build.variant: esp32c3
+    board_build.flash_mode: dio  # prevents serial-flash bootloops on these C3 boards
+
+# Pull in the gtx2_client component from this repo (ha-bridge/esphome/components/).
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [gtx2_client]
+
+esp32:
+  variant: ESP32C3
+  board: esp32-c3-devkitm-1
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_BT_BLE_50_FEATURES_SUPPORTED: y
+      CONFIG_BT_BLE_42_FEATURES_SUPPORTED: y
+      CONFIG_ESP_TASK_WDT_TIMEOUT_S: "10"
+
+logger:
+
+api:
+  encryption:
+    key: !secret gtx2_api_key  # generate per node, store in vault — never commit
+  homeassistant_services: true  # required: lets the node fire esphome.gtx2_input events into HA
+  services:
+    # API-direct dial push: HA renders the native container off-node + sends it in base64 slices
+    # (the whole ~35 KB blob exceeds the 32 KB API message cap, so it can't be one arg). The node
+    # reassembles in order + D-plane-streams it — no HTTP/blobd/firewall. Driver: the HA VM's
+    # VLAN8 leg (same subnet as the node → no cross-VLAN rule). seq==0 restarts; the final slice
+    # (accumulated == total_len) triggers the push. total_len = RAW decoded container length.
+    - service: push_dial_chunk
+      variables:
+        dial_id: int
+        seq: int
+        total_len: int
+        b64: string
+      then:
+        - lambda: 'id(gtx2)->push_dial_chunk(dial_id, seq, total_len, b64);'
+
+ota:
+  - platform: esphome
+    password: !secret gtx2_ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "GTX2-Node"
+    password: !secret gtx2_ap_password
+
+captive_portal:
+
+# HA time — feeds set-time and the weather push.
+time:
+  - platform: homeassistant
+    id: ha_time
+
+esp32_ble:
+  max_connections: 3
+
+# Contested claiming — the node that hears the watch strongest grabs the link first (== the room).
+# Identical to the example-tag-node pattern; multi-room = add this MAC to more nodes.
+esp32_ble_tracker:
+  scan_parameters:
+    continuous: true
+    interval: 320ms
+    window: 240ms
+  on_ble_advertise:
+    - mac_address: F4:4E:FD:00:00:01  # TODO: your watch's real static MAC (public F4:4E:FD:xx:xx:xx)
+      then:
+        - lambda: |-
+            int d = (int) ((-55 - x.get_rssi()) * 80);
+            if (d < 0) d = 0;
+            if (d > 3000) d = 3000;
+            id(claim_delay_w) = d;
+            id(last_adv_w) = millis();
+            id(claim_watch).execute();
+
+globals:
+  - id: claim_delay_w
+    type: int
+    initial_value: '0'
+  - id: last_adv_w
+    type: uint32_t
+    initial_value: '0'
+
+script:
+  - id: claim_watch
+    mode: single
+    then:
+      - delay: !lambda 'return id(claim_delay_w);'
+      - lambda: 'if (millis() - id(last_adv_w) < 2500) id(gtx2_ble)->connect();'
+
+ble_client:
+  - mac_address: F4:4E:FD:00:00:01  # TODO: your watch's real static MAC
+    id: gtx2_ble
+    auto_connect: false
+
+# The GTX2 protocol client — attaches to the ble_client above.
+gtx2_client:
+  - id: gtx2
+    ble_client_id: gtx2_ble
+    node_name: gtx2-node        # fired in every gtx2_input event so HA maps node -> room
+    time_id: ha_time
+    health_interval: 300s       # one health category polled per tick; 0s disables polling
+    connected:
+      name: "GTX2 Connected"
+    heart_rate:
+      name: "GTX2 Heart Rate"
+    spo2:
+      name: "GTX2 SpO2"
+    steps:
+      name: "GTX2 Steps"
+    distance:
+      name: "GTX2 Distance"
+    calories:
+      name: "GTX2 Calories"
+    firmware:
+      name: "GTX2 Firmware"
+    active_face:
+      name: "GTX2 Active Face"
+
+# Link RSSI + weak-link release (the iTag proximity-handoff pattern).
+sensor:
+  - platform: ble_client
+    ble_client_id: gtx2_ble
+    id: gtx2_rssi
+    name: "GTX2 Link RSSI"
+    type: rssi
+    update_interval: 2s
+    filters:
+      - median: { window_size: 3, send_every: 1, send_first_at: 1 }
+    on_value:
+      then:
+        - lambda: |-
+            static int weak = 0;
+            if (x < -85 && !std::isnan(x)) {
+              if (++weak >= 3) { weak = 0; id(gtx2_ble)->disconnect(); }
+            } else {
+              weak = 0;
+            }
+
+# SAFE commands — call the component's methods from lambdas. DANGER tier is intentionally absent.
+button:
+  - platform: safe_mode
+    name: "(Safe Mode)"
+  - platform: template
+    name: "Buzz GTX2"
+    icon: mdi:watch-vibrate
+    on_press:
+      - lambda: 'id(gtx2)->find(true);'
+  - platform: template
+    name: "Stop Buzz GTX2"
+    icon: mdi:bell-off
+    on_press:
+      - lambda: 'id(gtx2)->find(false);'
+  - platform: template
+    name: "GTX2 Sync Time"
+    icon: mdi:clock-check
+    on_press:
+      - lambda: 'id(gtx2)->set_time_now();'
+  - platform: template
+    name: "GTX2 Read Health"
+    icon: mdi:heart-pulse
+    on_press:
+      - lambda: 'id(gtx2)->request_health();'
+  - platform: template
+    name: "GTX2 Read State"
+    icon: mdi:information
+    on_press:
+      - lambda: 'id(gtx2)->request_state();'
+  - platform: template
+    name: "GTX2 Release Link"
+    entity_category: diagnostic
+    on_press:
+      - lambda: 'id(gtx2_ble)->disconnect();'
+
+# Example: push weather from HA. Wire a real HA weather entity via a homeassistant sensor/text
+# sensor and pass its values here (numbers shown are placeholders).
+#   on_...:
+#     - lambda: 'id(gtx2)->push_weather(21, 27, 15, 6, "Anytown");'
+# Example: switch the active watch face (inferred opcode — confirm on a capture first):
+#     - lambda: 'id(gtx2)->switch_dial(25001);'
+# Example: set an alarm (0x07):
+#     - lambda: 'id(gtx2)->set_alarm(0, 7, 30, true);'

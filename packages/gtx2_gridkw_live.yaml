@@ -1,0 +1,160 @@
+# =============================================================================
+# gtx2_gridkw_live.yaml — HA driver for the LIVE-kW watch face (P2).
+#
+# The gridkw_live face (custom_id_25041 / gtx2_gridkw_live.bin, installed once via chunked) shows a
+# REAL HH:MM clock (hour+min native widgets) + a live "X.X kW" (date widget = integer kW, second
+# widget = tenths kW, with a baked "." + "kW"). We drive the value by writing those RTC fields with
+# set_time_custom — NO image re-push, so none of the /local/-OOM / LZ4-cap / dropped-push issues
+# apply to updates. hour+min are set to real now(), so the clock stays correct.
+#
+# ENCODING (DECIMAL kW "X.X" — matches faces.encode_grid_live_decimal; JP decision 2026-07-16):
+#   dkw    = int(watts/1000*10 + 0.5)      # deci-kW, HALF-UP (int(x+0.5), NOT |round — banker's-vs-
+#                                          #   half-up diverges at .5). 1149W → 11.
+#   day    = max(1, dkw // 10)             # INTEGER kW → `day` widget. Floored to 1 (RTC day != 0).
+#   month  = dkw % 10                      # TENTHS kW → `month` widget (0-9). month=0 renders "0"
+#                                          #   on glass (HW-confirmed 2026-07-16), so "3.0" is reachable.
+#   hour, minute = real now()              # keep the clock correct (set_time also re-syncs it)
+#   week   = now().weekday()               # firmware DERIVES weekday from the date — not a carrier
+#   → set_time_multi(hour, minute, second=0, day, month, week)
+#
+# DEPLOY: /homeassistant/packages/ (`ha core check` + reload_all). MULTI-TARGET: pushes BOTH the
+# daily (esphome.gtx2_office_daily_set_time_multi — office node) AND watch3 (the assigned watch,
+# esphome.gtx2_garage_watch3_set_time_multi — garage node), same decimal encoding, each guarded on its own
+# connected sensor. The scheduler (gtx2 integration) excludes BOTH from the /30 sync_time+weather+gauge
+# (logic.gridkw_owns_rtc over the {daily, watch3} set) so neither reverts to the real date.
+# ⚠️ node-specific / NOT roam-safe (daily=office, watch3=garage) — a routed wrapper is a later enhancement.
+#
+# DELIVERY: the live-kW FACE (gtx2_gridkw_live.bin, 33 KB w/ bundled fonts) is too big for /local/
+# (~11 KB ceiling) → installs via the chunked D-plane (push_dial_chunk). Chunked IS DURABLE: it and
+# push_dial_blob converge on the SAME dp_begin_ streamer (code review 2026-07-16 — the earlier
+# "chunked non-durable / soft install" theory is RETRACTED). Flow: install once → activate (0x16 SET)
+# → this package then drives the value forever via set_time_custom (no re-push → no /local/-OOM / LZ4
+# concerns on updates). Deploy once the chunked push of the face is installed + active on daily.
+# =============================================================================
+
+input_boolean:
+  gtx2_gridkw_live:
+    name: "GTX2 live-kW face (daily + watch3)"
+    icon: mdi:transmission-tower
+
+input_number:
+  # Last watts pushed — deadband reference so a 100 W move triggers an update (not every flicker).
+  # No initial: restore_state persists; the sentinel default forces the first tick to fire.
+  gtx2_gridkw_last_w:
+    name: "GTX2 live-kW last pushed (W)"
+    icon: mdi:sine-wave
+    min: 0
+    max: 50000
+    step: 1
+    mode: box
+
+input_datetime:
+  # Timestamp of the last SUCCESSFUL RTC push — powers the dashboard "last refreshed"
+  # staleness tile. input_number.gtx2_gridkw_last_w.last_changed only moves when the
+  # rounded watts CHANGE, so it misses flat 5-min re-asserts; this stamp fires on every
+  # push, giving a true feed-freshness clock (see the dashboard Live grid-kW card).
+  gtx2_gridkw_last_push:
+    name: "GTX2 live-kW last push"
+    icon: mdi:clock-check-outline
+    has_date: true
+    has_time: true
+
+automation:
+  - id: gtx2_gridkw_live_update
+    alias: "GTX2 live-kW: encode grid watts into the watch RTC (set_time_custom)"
+    mode: single
+    max_exceeded: silent
+    trigger:
+      # Fire on EVERY grid change — NO `for:` debounce. The source updates ~every 1.7 s (137 changes/
+      # 4 min, measured), so a `for:` window almost never holds → the old `for: 5s` made this trigger
+      # effectively DEAD and left only the 5-min heartbeat ("too slow", JP 2026-07-16). The value gate
+      # is in the condition (push iff the DISPLAYED tenth changes), not a time debounce.
+      - platform: state
+        entity_id: sensor.total_grid_power
+        id: change
+      - platform: time_pattern
+        seconds: "/30"             # 30 s backstop: re-assert + correct clock drift on flat periods
+        id: drift
+      - platform: state
+        entity_id: input_boolean.gtx2_gridkw_live
+        to: "on"
+        id: enable                 # immediate paint when enabled
+    condition:
+      - condition: state
+        entity_id: input_boolean.gtx2_gridkw_live
+        state: "on"
+      # MULTI-TARGET (daily + watch3 mirror): proceed if EITHER watch is linked; each push below is
+      # then individually gated on its own connected sensor. (rollup = OR of that watch's node links.)
+      - condition: template
+        value_template: >-
+          {{ is_state('binary_sensor.gtx2_daily_connected','on')
+             or is_state('binary_sensor.gtx2_watch3_connected','on') }}
+      # Valid reading, and (change trigger) push ONLY when the DISPLAYED value changes — i.e. the
+      # deci-kW ("X.X") differs from the last-pushed one — AND >=3 s since the last push (caps flip-
+      # flop spam at a rounding boundary). drift/enable always fire. This is maximally responsive
+      # (updates within ~3 s of any visible change) yet silent on sub-0.1 kW jitter.
+      - condition: template
+        value_template: >
+          {% if states('sensor.total_grid_power') in ['unknown','unavailable','none'] %}
+          false
+          {% elif trigger.id in ['drift', 'enable'] %}
+          true
+          {% else %}
+          {% set new_dkw = (states('sensor.total_grid_power') | float(0) | abs / 1000 * 10 + 0.5) | int %}
+          {% set last_dkw = (states('input_number.gtx2_gridkw_last_w') | float(-99999) | abs / 1000 * 10 + 0.5) | int %}
+          {% set ts = state_attr('input_datetime.gtx2_gridkw_last_push', 'timestamp') %}
+          {% set since = (now().timestamp() - ts) if ts else 999 %}
+          {{ new_dkw != last_dkw and since >= 3 }}
+          {% endif %}
+    variables:
+      w: "{{ states('sensor.total_grid_power') | float(0) | abs }}"
+      # DECIMAL kW (JP 2026-07-16 "1.1 kW"): deci-kW HALF-UP, then split day=int / month=tenths.
+      # Explicit int(x+0.5) (half-up) — NOT |round (banker's, version-ambiguous) — matches
+      # faces.encode_grid_live_decimal. day floored to 1 (RTC day can't be 0); month=tenths 0-9
+      # — month=0 renders "0" on glass (HW-confirmed 2026-07-16), so "3.0" etc. ARE reachable.
+      dkw: "{{ (w / 1000 * 10 + 0.5) | int }}"
+      kw_day: "{{ [1, (dkw // 10)] | max }}"
+      kw_tenths: "{{ dkw % 10 }}"
+    action:
+      # DAILY (office node) — guarded on the daily link. DIRECT node service (flashed on the office
+      # node; daily lives there). ⚠️ NOT roam-safe — if daily moves off the office node this won't
+      # reach it; a routed wrapper is a later enhancement.
+      - if:
+          - condition: state
+            entity_id: binary_sensor.gtx2_daily_connected
+            state: "on"
+        then:
+          - action: esphome.gtx2_office_daily_set_time_multi
+            data:
+              hour: "{{ now().hour }}"
+              minute: "{{ now().minute }}"
+              second: 0
+              day: "{{ kw_day | int }}"           # integer kW → `day` widget
+              month: "{{ kw_tenths | int }}"      # tenths kW → `month` widget (0-9; month=0 renders "0")
+              week: "{{ now().weekday() }}"        # real weekday (firmware derives it anyway; not a carrier)
+      # WATCH3 (garage node) — MIRRORS the daily live-kW. SAME decimal encoding (day=int kW, month=tenths)
+      # so the decimal face (gtx2_gridkw_decimal.bin, sha 874e3e37) renders identically. Guarded on the
+      # watch3 link. ⚠️ NOT roam-safe — watch3 currently lives on the garage node; if it roams this won't
+      # reach it (mirror of the daily caveat; a routed wrapper is the later enhancement for both).
+      - if:
+          - condition: state
+            entity_id: binary_sensor.gtx2_watch3_connected
+            state: "on"
+        then:
+          - action: esphome.gtx2_garage_watch3_set_time_multi
+            data:
+              hour: "{{ now().hour }}"
+              minute: "{{ now().minute }}"
+              second: 0
+              day: "{{ kw_day | int }}"           # integer kW → `day` widget (same as daily)
+              month: "{{ kw_tenths | int }}"      # tenths kW → `month` widget (same as daily)
+              week: "{{ now().weekday() }}"        # real weekday
+      # Record what we pushed so the deadband measures from it.
+      - action: input_number.set_value
+        target: { entity_id: input_number.gtx2_gridkw_last_w }
+        data: { value: "{{ w | round(0) | int }}" }
+      # Stamp the push time on EVERY successful push (this runs only if set_time_custom
+      # above didn't error → "last SUCCESSFUL refresh"). Dashboard reads this for staleness.
+      - action: input_datetime.set_datetime
+        target: { entity_id: input_datetime.gtx2_gridkw_last_push }
+        data: { timestamp: "{{ now().timestamp() }}" }

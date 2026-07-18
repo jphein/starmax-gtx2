@@ -1,0 +1,165 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "GTX2 Watch",
+        "description": "Add the GTX2 watch hub. Watches, nodes, gridwatts and media are configured afterwards via the integration options."
+      }
+    },
+    "abort": {
+      "already_configured": "GTX2 is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "GTX2 options",
+        "menu_options": {
+          "watches": "Watches (name / MAC)",
+          "nodes": "Holder-scan nodes",
+          "gridwatts": "Grid-watts face",
+          "media": "Media & find-phone"
+        }
+      },
+      "watches": {
+        "title": "Watches",
+        "description": "One watch per line:  slug = Name = MAC  (e.g.  watch4 = Kitchen = F4:4E:FD:11:22:33). Add a line to add a watch, delete a line to remove one. An empty MAC keeps the watch but disables it (no entities). Entities + services rebuild automatically on save. MACs stay on the VM — never in YAML or the repo.",
+        "data": { "watches": "Watches (slug = Name = MAC, one per line)" }
+      },
+      "nodes": {
+        "title": "Room nodes",
+        "description": "One node per line:  prefix = Room  (e.g.  gtx2_garage = Garage). Add a line to add a room node — last match wins. Each node gets an online sensor automatically.",
+        "data": { "nodes": "Nodes (prefix = Room, one per line)" }
+      },
+      "gridwatts": {
+        "title": "Grid-watts face",
+        "data": {
+          "source_entity": "Grid power sensor",
+          "max_w": "Full-scale watts",
+          "target": "Target watch",
+          "www_url_base": "HA base URL the nodes fetch /local/ from"
+        }
+      },
+      "media": {
+        "title": "Media & find-phone",
+        "data": {
+          "media_player": "Media player",
+          "findphone_notify": "Find-phone notify service (e.g. notify.mobile_app_phone)",
+          "findphone_speaker": "Find-phone TTS speaker",
+          "tts_engine": "TTS engine"
+        }
+      }
+    }
+  },
+  "services": {
+    "buzz": {
+      "name": "Buzz",
+      "description": "Ring/buzz a watch to find it (host-bridge fallback when no node holds the link).",
+      "fields": {
+        "watch": { "name": "Watch", "description": "Which watch to target." },
+        "duration": { "name": "Duration", "description": "Buzz seconds (host-bridge path only)." }
+      }
+    },
+    "stop_buzz": {
+      "name": "Stop buzz",
+      "description": "Stop an active buzz. Node-only.",
+      "fields": { "watch": { "name": "Watch", "description": "Which watch to target." } }
+    },
+    "sync_time": {
+      "name": "Sync time",
+      "description": "Sync the watch clock to now.",
+      "fields": { "watch": { "name": "Watch", "description": "Which watch to target." } }
+    },
+    "set_time_custom": {
+      "name": "Set time (custom / live-kW)",
+      "description": "Node-only RTC live-value write: hour+minute = real clock, day = integer kW, second = tenths kW (drives the live-kW face, no image re-push).",
+      "fields": {
+        "watch": { "name": "Watch", "description": "Which watch to target." },
+        "hour": { "name": "Hour", "description": "0-23 (real clock)." },
+        "minute": { "name": "Minute", "description": "0-59 (real clock)." },
+        "second": { "name": "Second", "description": "0-59 — carries tenths of a kW." },
+        "day": { "name": "Day", "description": "1-31 — carries integer kW." }
+      }
+    },
+    "read_health": {
+      "name": "Read health",
+      "description": "Pull the health/history record summary.",
+      "fields": { "watch": { "name": "Watch", "description": "Which watch to target." } }
+    },
+    "read_state": {
+      "name": "Read state",
+      "description": "Read watch state. Node-only.",
+      "fields": { "watch": { "name": "Watch", "description": "Which watch to target." } }
+    },
+    "release_link": {
+      "name": "Release link",
+      "description": "Drop the node's BLE link to the watch. Node-only.",
+      "fields": { "watch": { "name": "Watch", "description": "Which watch to target." } }
+    },
+    "activate": {
+      "name": "Activate",
+      "description": "Companion handshake (bind + enable).",
+      "fields": { "watch": { "name": "Watch", "description": "Which watch to target." } }
+    },
+    "push_weather": {
+      "name": "Push weather",
+      "description": "Push the current weather frame (skips when weather.home is unavailable).",
+      "fields": { "watch": { "name": "Watch", "description": "Which watch to target." } }
+    },
+    "set_alarm": {
+      "name": "Set alarm",
+      "description": "[INFERRED] Set an alarm slot; fields default from the Push-view helpers when omitted. Node-only.",
+      "fields": {
+        "watch": { "name": "Watch", "description": "Target; defaults to select.gtx2_push_target." },
+        "index": { "name": "Slot", "description": "Alarm slot 0-2." },
+        "hour": { "name": "Hour", "description": "0-23." },
+        "minute": { "name": "Minute", "description": "0-59." },
+        "enabled": { "name": "Enabled", "description": "Alarm on/off." }
+      }
+    },
+    "switch_dial": {
+      "name": "Switch dial",
+      "description": "[INFERRED] Switch to an installed face; defaults from the Push-view selects when omitted. Node-only.",
+      "fields": {
+        "watch": { "name": "Watch", "description": "Target; defaults to select.gtx2_push_target." },
+        "dial_id": { "name": "Dial ID", "description": "Face id; defaults from select.gtx2_dial." }
+      }
+    },
+    "push_text": {
+      "name": "Push text (rendered face)",
+      "description": "GATED — render text to a dial face via blobd. Node-only.",
+      "fields": {
+        "watch": { "name": "Watch", "description": "Target; defaults to select.gtx2_push_target." },
+        "text": { "name": "Text", "description": "Text; defaults from text.gtx2_push_text." }
+      }
+    },
+    "push_text_label": {
+      "name": "Push text (glanceable)",
+      "description": "Ride the weather city line with short text + live temperature. Node-only.",
+      "fields": {
+        "watch": { "name": "Watch", "description": "Target; defaults to select.gtx2_push_target." },
+        "text": { "name": "Text", "description": "Text; defaults from text.gtx2_push_text." }
+      }
+    },
+    "push_notification": {
+      "name": "Push notification",
+      "description": "Render a notification watch-face on the host-bridge and push it. Host-bridge only.",
+      "fields": {
+        "watch": { "name": "Watch", "description": "Which watch to target." },
+        "title": { "name": "Title", "description": "Defaults from text.gtx2_notify_title." },
+        "body": { "name": "Body", "description": "Defaults from text.gtx2_notify_body." },
+        "footer": { "name": "Footer", "description": "Defaults to now HH:MM." }
+      }
+    },
+    "push_face": {
+      "name": "Push face (grid-watts gauge)",
+      "description": "Fetch the rendered gauge from blobd and stream it chunked to the holder.",
+      "fields": {
+        "watch": { "name": "Watch", "description": "Which watch to target." },
+        "watts": { "name": "Watts", "description": "Signed grid power baked into the gauge." },
+        "dial_id": { "name": "Dial ID", "description": "Install as this dial id (default 25041)." },
+        "max_w": { "name": "Full-scale watts", "description": "Arc full-scale (default 12000)." }
+      }
+    }
+  }
+}

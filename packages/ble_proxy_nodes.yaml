@@ -1,0 +1,62 @@
+# BLE proxy mesh — per-node liveness for the "Find My" dashboard.
+#
+# The ESP32 BLE proxies never got a `binary_sensor: platform: status`, so there is no direct
+# "online" entity. But when a node drops off WiFi, HA marks EVERY entity it owns `unavailable`.
+# Online-idle, a safe_mode button reads `unknown` and a presence sensor reads `on`/`off` — both
+# `!= 'unavailable'`. So availability of any universal per-node entity is a reliable liveness probe.
+# (Note: `has_value()` is WRONG here — it treats the online-idle `unknown` as no-value; a direct
+# `!= 'unavailable'` string compare is what distinguishes online-idle from truly offline.)
+#
+# device_class: connectivity → the tiles read green "Connected" when up, red "Disconnected" when
+# the node is offline/unplugged. Feeds the Find My dashboard "BLE Mesh Nodes" section.
+
+template:
+  - binary_sensor:
+      - name: "Node Bedroom"
+        unique_id: ble_node_bedroom
+        device_class: connectivity
+        state: "{{ states('button.bedroom_ble_proxy_safe_mode') != 'unavailable' }}"
+      - name: "Node Kitchen"
+        unique_id: ble_node_kitchen
+        device_class: connectivity
+        state: "{{ states('button.kitchen_ble_proxy_safe_mode') != 'unavailable' }}"
+      - name: "Node Laundry"
+        unique_id: ble_node_laundry
+        device_class: connectivity
+        state: "{{ states('button.laundry_ble_proxy_safe_mode') != 'unavailable' }}"
+      - name: "Node Laundry 2"
+        unique_id: ble_node_laundry_2
+        device_class: connectivity
+        state: "{{ states('binary_sensor.laundry_ble_proxy_2_a_phone') != 'unavailable' }}"
+      - name: "Node Garage"
+        unique_id: ble_node_garage
+        device_class: connectivity
+        state: "{{ states('button.bathroom_ble_proxy_safe_mode') != 'unavailable' }}"
+      - name: "Node Office"
+        unique_id: ble_node_office
+        device_class: connectivity
+        state: "{{ states('button.office_ble_proxy_safe_mode') != 'unavailable' }}"
+      - name: "Node Utility"
+        unique_id: ble_node_utility
+        device_class: connectivity
+        state: "{{ states('button.utility_ble_proxy_safe_mode') != 'unavailable' }}"
+      - name: "Node Studio"
+        unique_id: ble_node_studio
+        device_class: connectivity
+        state: "{{ states('button.studio_ble_proxy_safe_mode') != 'unavailable' }}"
+  - sensor:
+      - name: "BLE Nodes Online"
+        unique_id: ble_nodes_online
+        icon: mdi:access-point-network
+        unit_of_measurement: "/8"
+        state: >
+          {% set src = [
+            'button.bedroom_ble_proxy_safe_mode',
+            'button.kitchen_ble_proxy_safe_mode',
+            'button.laundry_ble_proxy_safe_mode',
+            'binary_sensor.laundry_ble_proxy_2_a_phone',
+            'button.bathroom_ble_proxy_safe_mode',
+            'button.office_ble_proxy_safe_mode',
+            'button.utility_ble_proxy_safe_mode',
+            'button.studio_ble_proxy_safe_mode' ] %}
+          {{ src | reject('is_state', 'unavailable') | list | count }}

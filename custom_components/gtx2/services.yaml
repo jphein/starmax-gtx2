@@ -1,0 +1,321 @@
+# gtx2.* services — routed holder-first, MQTT host-bridge fallback second (engine parity with the
+# retired gtx2_command_routing.yaml). Media dispatch services (media_play_pause/next/prev,
+# find_my_phone) are registered by media.py (Task 9) and documented there.
+# NB: the watch selector is inlined per service (a YAML anchor would leave a phantom top-level key
+# that HA reads as an unregistered service).
+
+buzz:
+  name: Buzz
+  description: Ring/buzz a watch to find it. Host-bridge fallback when no node holds the link.
+  fields:
+    watch:
+      name: Watch
+      required: true
+      example: daily
+      selector: { select: { options: [daily, spare, watch3] } }
+    duration:
+      name: Duration
+      description: Buzz seconds (host-bridge path only).
+      required: false
+      example: 5
+      selector: { number: { min: 1, max: 60, step: 1, unit_of_measurement: s, mode: box } }
+
+stop_buzz:
+  name: Stop buzz
+  description: Stop an active buzz. NODE-ONLY — no host-bridge fallback (warns + no-op if no holder).
+  fields:
+    watch:
+      name: Watch
+      required: true
+      example: daily
+      selector: { select: { options: [daily, spare, watch3] } }
+
+sync_time:
+  name: Sync time
+  description: Sync the watch clock to now (node set_time; host-bridge set-time fallback).
+  fields:
+    watch:
+      name: Watch
+      required: true
+      example: daily
+      selector: { select: { options: [daily, spare, watch3] } }
+
+set_time_custom:
+  name: Set time (custom / live-kW)
+  description: >-
+    NODE-ONLY RTC live-value write for the live-kW face (only a link-holder can write the RTC — no
+    host-bridge fallback). hour + minute = the real clock (stays correct); day = integer kW;
+    second = tenths kW. A date+second digit-widget face renders "X.X kW" live from these — no image
+    re-push. All fields required.
+  fields:
+    watch:
+      name: Watch
+      required: true
+      example: daily
+      selector: { select: { options: [daily, spare, watch3] } }
+    hour:
+      name: Hour
+      required: true
+      example: 14
+      selector: { number: { min: 0, max: 23, step: 1, mode: box } }
+    minute:
+      name: Minute
+      required: true
+      example: 30
+      selector: { number: { min: 0, max: 59, step: 1, mode: box } }
+    second:
+      name: Second (tenths kW)
+      required: true
+      example: 5
+      selector: { number: { min: 0, max: 59, step: 1, mode: box } }
+    day:
+      name: Day (integer kW)
+      required: true
+      example: 3
+      selector: { number: { min: 1, max: 31, step: 1, mode: box } }
+
+read_health:
+  name: Read health
+  description: Pull health/history record summary (node read_health; host-bridge sync-health fallback).
+  fields:
+    watch:
+      name: Watch
+      required: true
+      example: daily
+      selector: { select: { options: [daily, spare, watch3] } }
+
+read_state:
+  name: Read state
+  description: Read watch state. NODE-ONLY (warns + no-op if no holder).
+  fields:
+    watch:
+      name: Watch
+      required: true
+      example: daily
+      selector: { select: { options: [daily, spare, watch3] } }
+
+release_link:
+  name: Release link
+  description: Drop the node's BLE link to the watch. NODE-ONLY (warns + no-op if no holder).
+  fields:
+    watch:
+      name: Watch
+      required: true
+      example: daily
+      selector: { select: { options: [daily, spare, watch3] } }
+
+activate:
+  name: Activate
+  description: Companion handshake (bind + enable). Host-bridge fallback available.
+  fields:
+    watch:
+      name: Watch
+      required: true
+      example: daily
+      selector: { select: { options: [daily, spare, watch3] } }
+
+push_weather:
+  name: Push weather
+  description: >-
+    Fetch weather.home (°F) + daily forecast, convert to °C, map the condition (#25 table) and push
+    ONE frame to the watch. Skips entirely when weather.home is unavailable (never 0/0/0/0).
+  fields:
+    watch:
+      name: Watch
+      required: true
+      example: daily
+      selector: { select: { options: [daily, spare, watch3] } }
+
+set_alarm:
+  name: Set alarm
+  description: >-
+    [INFERRED opcode] Set an alarm slot. watch/index/hour/minute/enabled all optional — when omitted
+    they default from select.gtx2_push_target + number.gtx2_alarm_index + time.gtx2_alarm_time +
+    switch.gtx2_alarm_enabled (the Push-view button binds with no args). NODE-ONLY.
+  fields:
+    watch:
+      name: Watch
+      required: false
+      example: daily
+      selector: { select: { options: [daily, spare, watch3] } }
+    index:
+      name: Slot
+      required: false
+      example: 0
+      selector: { number: { min: 0, max: 2, step: 1, mode: box } }
+    hour:
+      name: Hour
+      required: false
+      example: 7
+      selector: { number: { min: 0, max: 23, step: 1, mode: box } }
+    minute:
+      name: Minute
+      required: false
+      example: 30
+      selector: { number: { min: 0, max: 59, step: 1, mode: box } }
+    enabled:
+      name: Enabled
+      required: false
+      example: true
+      selector: { boolean: }
+
+switch_dial:
+  name: Switch dial
+  description: >-
+    [INFERRED opcode] Switch to an installed watch face. watch/dial_id optional — when omitted they
+    default from select.gtx2_push_target + select.gtx2_dial (label "Name (ID)"). NODE-ONLY.
+  fields:
+    watch:
+      name: Watch
+      required: false
+      example: daily
+      selector: { select: { options: [daily, spare, watch3] } }
+    dial_id:
+      name: Dial ID
+      required: false
+      example: 25023
+      selector: { number: { min: 1, max: 65535, mode: box } }
+
+push_text:
+  name: Push text (rendered face)
+  description: >-
+    GATED — render text to a dial face via blobd (homeassistant.local:8088) and push it. watch/text optional
+    (default from select.gtx2_push_target + text.gtx2_push_text). NODE-ONLY; no-ops until blobd live.
+  fields:
+    watch:
+      name: Watch
+      required: false
+      example: daily
+      selector: { select: { options: [daily, spare, watch3] } }
+    text:
+      name: Text
+      required: false
+      example: "meeting in 5"
+      selector: { text: }
+
+push_text_label:
+  name: Push text (glanceable / city line)
+  description: >-
+    Ride the weather city field with short text + live temperature (condition = clear). watch/text
+    optional (default from select.gtx2_push_target + text.gtx2_push_text). NODE-ONLY.
+  fields:
+    watch:
+      name: Watch
+      required: false
+      example: daily
+      selector: { select: { options: [daily, spare, watch3] } }
+    text:
+      name: Text
+      required: false
+      example: "hi jp"
+      selector: { text: }
+
+push_notification:
+  name: Push notification
+  description: >-
+    Render a notification watch-face on the the host host-bridge and push it. HOST-BRIDGE ONLY.
+    title/body default from text.gtx2_notify_title / text.gtx2_notify_body; footer defaults to now HH:MM.
+  fields:
+    watch:
+      name: Watch
+      required: true
+      example: daily
+      selector: { select: { options: [daily, spare, watch3] } }
+    title: { name: Title, required: false, example: "Front Door", selector: { text: } }
+    body: { name: Body, required: false, example: "Motion detected", selector: { text: } }
+    footer: { name: Footer, required: false, example: "14:32", selector: { text: } }
+
+push_face:
+  name: Push face (grid-watts gauge)
+  description: >-
+    Render the grid-watts gauge in-component (<8 KB static), stage it to HA /local/ and push it to
+    the holder as a url-based dial face (dial 25041). Reports delivery, not display.
+  fields:
+    watch:
+      name: Watch
+      required: true
+      example: daily
+      selector: { select: { options: [daily, spare, watch3] } }
+    watts:
+      name: Watts
+      description: Signed grid power (>=0 import, <0 export).
+      required: true
+      example: 1158
+      selector: { number: { min: -20000, max: 20000, step: 1, unit_of_measurement: W, mode: box } }
+    dial_id:
+      name: Dial ID
+      required: false
+      example: 25041
+      selector: { number: { min: 1, max: 65535, mode: box } }
+    max_w:
+      name: Full-scale watts
+      required: false
+      example: 12000
+      selector: { number: { min: 1000, max: 50000, step: 500, unit_of_measurement: W, mode: box } }
+
+# --- media dispatch (media.py, Task 9) — no-arg; the dashboard media/find rows bind these ------
+media_play_pause:
+  name: Media play/pause
+  description: Play/pause the configured media_player (options → media).
+media_next:
+  name: Media next
+  description: Next track on the configured media_player.
+media_prev:
+  name: Media previous
+  description: Previous track on the configured media_player.
+find_my_phone:
+  name: Find my phone
+  description: Ring the configured phone (notify) + speak a TTS prompt on the configured speaker.
+
+# --- [CFW] generic value slots (opcode 0xA2, starmax_client.slots) — SKELETON -------------------
+# ⚠️ CFW-ONLY: these route to a node `set_slots`/`set_text_slot` ESPHome action that exists only on
+# CFW firmware (design the CFW arbitrary-fields design §4.3). On stock firmware they
+# no-op with a warning. Registered by slots_service.py (handler stub — wiring into __init__ left for
+# review). Numeric range/dec mirror slots.CFW_NUM_SLOTS(8) / DEC_MAX(3); text idx 0..1, <=19 ASCII.
+set_slot:
+  name: "[CFW] Set value slot (numeric)"
+  description: >-
+    Push a single numeric value slot to the watch's arbitrary-data store (0xA2). value is a signed
+    int32; decimals (0-3) places the point at render (value=124, decimals=1 -> "12.4"). CFW-only.
+  fields:
+    watch:
+      name: Watch
+      required: true
+      example: spare
+      selector: { select: { options: [daily, spare, watch3] } }
+    index:
+      name: Slot index
+      required: true
+      example: 0
+      selector: { number: { min: 0, max: 7, step: 1, mode: box } }
+    value:
+      name: Value (raw int32)
+      required: true
+      example: 124
+      selector: { number: { min: -2147483648, max: 2147483647, step: 1, mode: box } }
+    decimals:
+      name: Decimal places
+      required: false
+      example: 1
+      selector: { number: { min: 0, max: 3, step: 1, mode: box } }
+
+set_text_slot:
+  name: "[CFW] Set text slot"
+  description: >-
+    Push a short ASCII label to a text slot (0xA2 flag=1). Truncated to 19 bytes. CFW-only.
+  fields:
+    watch:
+      name: Watch
+      required: true
+      example: spare
+      selector: { select: { options: [daily, spare, watch3] } }
+    index:
+      name: Text slot index
+      required: true
+      example: 0
+      selector: { number: { min: 0, max: 1, step: 1, mode: box } }
+    text:
+      name: Text
+      required: true
+      example: "GRID OK"
+      selector: { text: }
