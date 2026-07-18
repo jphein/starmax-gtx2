@@ -224,6 +224,14 @@ this repo**.
 
 ## Watch faces
 
+<p align="center">
+  <img src="docs/img/face-gridkw-live.png" alt="Live grid-kW custom watch face — GRID header, clock, kW hero, HR, battery/load arcs" width="300">
+  <br><em>The <strong>live grid-kW face</strong> — a custom dial that shows real-time home/grid power (kW)
+  fed live over BLE, alongside the clock, heart rate, and battery + load arcs. Rendered from the
+  shipped builder (<code>build_grid_live_blob</code>); the value updates via <code>set_time_custom</code>,
+  no re-push. (Render, not a photo.)</em>
+</p>
+
 Pre-built dials ship in `watchfaces/*.bin` (with `.png` previews) and under `watchfaces/custom/`.
 Build or repack your own with the scripts in `watchfaces/scripts/`
 (`dial_create.py` / `dial_pack.py` / `dial_unpack.py`) or interactively in the
