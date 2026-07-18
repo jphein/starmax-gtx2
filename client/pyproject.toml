@@ -1,0 +1,32 @@
+[project]
+name = "starmax-client"
+version = "0.1.0"
+description = "Standalone BLE client for the Starmax GTX2 (Runmefit) smartwatch"
+requires-python = ">=3.10"
+dependencies = ["bleak>=0.22"]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+# `transcode` enables building a native dial container from a distributed dial .bin (ZIP of
+# PNG/BMP): dial-build + `dial-push <zip>`. Not needed for dial-push of an already-native blob.
+transcode = ["pillow>=10", "lz4>=4"]
+
+[project.scripts]
+# Canonical console command (pipx-installable): `starmax`. `starmax-client` kept as a legacy
+# alias so existing docs/muscle-memory keep working; both dispatch to the same CLI entry-point.
+starmax = "starmax_client.cli:main"
+starmax-client = "starmax_client.cli:main"
+
+[tool.pytest.ini_options]
+# Put the project root on sys.path so `import starmax_client` and `import tests` both work
+# without an install. The whole test suite is offline (no BLE, no bleak import).
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["starmax_client", "starmax_client.commands"]
