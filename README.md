@@ -7,6 +7,12 @@
 ![HACS](https://img.shields.io/badge/HACS-custom%20repo-41BDF5)
 ![license](https://img.shields.io/badge/license-AGPL--3.0-blue)
 
+> ### 🌐 [**Live site — jphein.github.io/starmax-gtx2**](https://jphein.github.io/starmax-gtx2/)
+> The interactive **status & control dashboard**, plus the
+> [**teardown walkthrough**](https://jphein.github.io/starmax-gtx2/teardown.html) and the
+> [**watch-face builder**](https://jphein.github.io/starmax-gtx2/gtx2-face-builder.html) —
+> self-contained, dark/light aware, also openable [straight from disk](#live-pages).
+
 **Drive the Starmax GTX2 smartwatch with no vendor app and no cloud account.** This is a
 reverse-engineering of the GTX2's Bluetooth-LE protocol (vendor app "Runmefit"; sold
 rebranded as Wesocfit and others), turned into two things you can run today:
